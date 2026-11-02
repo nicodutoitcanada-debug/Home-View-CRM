@@ -75,9 +75,9 @@ async function initialize(){
   var result=await app.client.auth.getSession();
   if(result.error)throw result.error;
   if(result.data.session){app.user=result.data.session.user;await loadWorkspace();}
-  else{demo();app.preview=false;render();showAuth("signin");}
+  else{demo();render();showAuth("signin");}
   app.client.auth.onAuthStateChange(function(event,session){
-    if(event==="SIGNED_OUT"){app.user=null;app.workspace=null;app.member=null;app.role="";showAuth("signin");}
+    if(event==="SIGNED_OUT"){app.user=null;app.workspace=null;app.member=null;app.role="";demo();showAuth("signin");}
   });
  }catch(e){demo();notify("Connection issue: "+e.message,true);}
 }
@@ -136,7 +136,7 @@ function navTitle(){
  return titles[app.view]||titles.dashboard;
 }
 function notice(){
- if(app.preview)return '<div class="banner"><div><strong>PREVIEW MODE</strong> — Fictional sample companies only. Edits are temporary and do not sync or save. Connect Supabase before entering real client information.</div><button type="button" data-action="connect">Connect database</button></div>';
+ if(app.preview)return app.client?'<div class="banner"><div><strong>SAMPLE DATA</strong> — Fictional companies only. Sign in to access your shared workspace. No customer records are displayed until you sign in.</div></div>':'<div class="banner"><div><strong>PREVIEW MODE</strong> — Fictional sample companies only. Edits are temporary and do not sync or save. Connect Supabase before entering real client information.</div><button type="button" data-action="connect">Connect database</button></div>';
  return '<div class="banner success-banner"><div><strong>Shared workspace active.</strong> Changes are stored in your protected Supabase database for authorized team members.</div><span style="white-space:nowrap;font-weight:700">'+encode(app.workspace&&app.workspace.name||"HVS")+'</span></div>';
 }
 function render(){
@@ -374,7 +374,7 @@ async function authSubmit(e){
    if(r.error)throw r.error;
    await loadWorkspace();notify("Workspace created.");
   }else if(mode==="signup"){
-   var s=await app.client.auth.signUp({email:values.email.trim(),password:values.password});
+   var s=await app.client.auth.signUp({email:values.email.trim(),password:values.password,options:{emailRedirectTo:"https://nicodutoitcanada-debug.github.io/Home-View-CRM/"}});
    if(s.error)throw s.error;
    showAuth("signin","Account created. Check your email to confirm your address if requested, then sign in.");
   }else{
@@ -385,7 +385,7 @@ async function authSubmit(e){
  }catch(err){showAuth(mode,err.message||"Please try again.");}
  finally{button.disabled=false;}
 }
-async function signout(){if(app.client){await app.client.auth.signOut();}app.user=null;app.member=null;app.workspace=null;app.role="";demo();app.preview=false;render();showAuth("signin");}
+async function signout(){if(app.client){await app.client.auth.signOut();}app.user=null;app.member=null;app.workspace=null;app.role="";demo();render();showAuth("signin");}
 function delegateClick(e){
  var nav=e.target.closest("[data-nav]");if(nav){go(nav.dataset.nav);return;}
  var act=e.target.closest("[data-action]");
