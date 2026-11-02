@@ -156,6 +156,24 @@ revoke all on function public.claim_invites() from public;
 grant execute on function public.create_workspace(text) to authenticated;
 grant execute on function public.claim_invites() to authenticated;
 
+-- Explicit Data API privileges (Supabase changed defaults on October 30, 2026).
+-- Signed-out visitors may not read or write any CRM tables.
+revoke all on table public.workspaces, public.workspace_members,
+  public.workspace_invites, public.companies, public.contacts,
+  public.activities, public.tasks from anon;
+grant usage on schema public to authenticated;
+grant select on table public.workspaces, public.workspace_members to authenticated;
+grant select, insert on table public.workspace_invites to authenticated;
+grant select, insert, update on table public.companies,
+  public.contacts, public.tasks to authenticated;
+grant select, insert on table public.activities to authenticated;
+-- RPCs deliberately accept only verified authenticated users.
+-- Their code checks auth.uid() and workspace membership before mutations.
+revoke execute on function public.create_workspace(text) from anon;
+revoke execute on function public.claim_invites() from anon;
+revoke execute on function public.crm_is_member(uuid) from anon;
+revoke execute on function public.crm_is_admin(uuid) from anon;
+
 -- Realtime change feed requires publication enrollment.
 -- Publication may already exist; this block is safe to execute once.
 do $$ begin
