@@ -374,7 +374,7 @@ async function authSubmit(e){
    if(r.error)throw r.error;
    await loadWorkspace();notify("Workspace created.");
   }else if(mode==="signup"){
-   var s=await app.client.auth.signUp({email:values.email.trim(),password:values.password,options:{emailRedirectTo:"https://nicodutoitcanada-debug.github.io/Home-View-CRM/"}});
+   var s=await app.client.auth.signUp({email:values.email.trim(),password:values.password,options:{emailRedirectTo:new URL('./',window.location.href).href}});
    if(s.error)throw s.error;
    showAuth("signin","Account created. Check your email to confirm your address if requested, then sign in.");
   }else{
