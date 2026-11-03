@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "Home View Solutions | Sales CRM",
+  "short_name": "HV CRM",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101a2a",
+  "theme_color": "#101a2a",
+  "icons": [
+    {
+      "src": "./crm-icon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
