@@ -16,7 +16,7 @@ var STAGES=[
 var priorities=["hot","warm","cold"];
 var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:"dashboard",selectedCompany:null,
   companies:[],contacts:[],activities:[],tasks:[],members:[],invites:[],search:"",filter:"all",taskFilter:"open",
-  modal:null,busy:false,channel:null};
+  modal:null,busy:false,channel:null,recoveryMode:false};
 var el=function(id){return document.getElementById(id);};
 var encode=function(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");};
 var fmtDate=function(s){if(!s)return "Not scheduled";var d=new Date(String(s).slice(0,10)+"T12:00:00");return isNaN(d.getTime())?"—":d.toLocaleDateString("en-CA",{month:"short",day:"numeric",year:"numeric"});};
@@ -70,16 +70,35 @@ function configured(c){return /^https:\/\//.test(c.url)&&c.key.length>20;}
 async function initialize(){
  var c=config();if(!configured(c)){demo();return;}
  if(!window.supabase||!window.supabase.createClient){demo();notify("Could not load Supabase library. Try reloading.",true);return;}
+ var recoveryLink=/(?:[#&])type=recovery(?:&|$)/.test(window.location.hash);
  try{
   app.client=window.supabase.createClient(c.url,c.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  // Listen before getSession: the recovery event may fire while the URL is being processed.
+  app.client.auth.onAuthStateChange(function(event,session){
+   if(event==="PASSWORD_RECOVERY"){
+    app.recoveryMode=true;app.user=session?session.user:null;
+    showAuth("reset");
+   }else if(event==="SIGNED_OUT"&&!app.recoveryMode){
+    app.user=null;app.workspace=null;app.member=null;app.role="";demo();showAuth("signin");
+   }
+  });
   var result=await app.client.auth.getSession();
   if(result.error)throw result.error;
-  if(result.data.session){app.user=result.data.session.user;await loadWorkspace();}
-  else{demo();render();showAuth("signin");}
-  app.client.auth.onAuthStateChange(function(event,session){
-    if(event==="SIGNED_OUT"){app.user=null;app.workspace=null;app.member=null;app.role="";demo();showAuth("signin");}
-  });
- }catch(e){demo();notify("Connection issue: "+e.message,true);}
+  if(result.data.session){
+   if(app.recoveryMode||recoveryLink){
+    app.recoveryMode=true;demo();render();app.user=result.data.session.user;showAuth("reset");
+   }else{
+    app.user=result.data.session.user;await loadWorkspace();
+   }
+  }else{
+   demo();render();
+   showAuth(recoveryLink?"forgot":"signin",recoveryLink?"This recovery link could not be used. Request a new email.":null);
+  }
+ }catch(e){
+  demo();render();
+  if(recoveryLink)showAuth("forgot","The recovery link could not be verified. Request another email.");
+  else notify("Connection issue: "+e.message,true);
+ }
 }
 async function loadWorkspace(){
  if(!app.user)return;
@@ -352,15 +371,21 @@ async function toggleTask(id,completed){
 function showAuth(mode,message){
  if(!app.client)return;
  el("authLayer").classList.remove("hidden");
- var title=mode==="signup"?"Create your account":mode==="workspace"?"Join your team workspace":"Sign in to your CRM";
- var sub=mode==="workspace"?"No workspace invitation has been found for this email yet. If you're setting up Home View Solutions, create the workspace. Otherwise ask the administrator to invite your exact email address.":mode==="signup"?"Use your own email. A confirmation email may be required before you can sign in.":"Your builder notes and contacts are only available to authorized team members.";
+ var title=mode==="signup"?"Create your account":mode==="workspace"?"Join your team workspace":mode==="forgot"?"Reset your password":mode==="forgotSent"?"Check your email":mode==="reset"?"Choose a new password":"Sign in to your CRM";
+ var sub=mode==="workspace"?"No workspace invitation has been found for this email yet. If you're setting up Home View Solutions, create the workspace. Otherwise ask the administrator to invite your exact email address.":mode==="signup"?"Use your own email. A confirmation email may be required before you can sign in.":mode==="forgot"?"Enter your CRM account email address and we'll send you a password reset link.":mode==="forgotSent"?"If that email is registered, you will receive a reset link. Check your inbox and spam folder. Open the link on this device to set a new password.":mode==="reset"?"Set a new password for your existing CRM account.":"Your builder notes and contacts are only available to authorized team members.";
  var body='<div class="auth-title">'+title+'</div><div class="auth-sub">'+sub+'</div>';
  if(message)body+='<div class="auth-error">'+encode(message)+'</div>';
  if(mode==="workspace"){
   body+='<form class="auth-form" id="workspaceForm"><label class="field">Workspace name<input name="name" value="Home View Solutions" required></label><button type="submit" class="primary-btn">Create workspace</button></form><div class="auth-switch"><button type="button" data-auth="retry">Check invitation again</button> · <button type="button" data-auth="signout">Sign out</button></div>';
+ }else if(mode==="forgot"){
+  body+='<form class="auth-form" id="authForm"><label class="field">Email address<input name="email" type="email" autocomplete="email" required></label><button type="submit" class="primary-btn">Send reset link</button></form><div class="auth-switch"><button type="button" data-auth="signin">Back to sign in</button></div>';
+ }else if(mode==="forgotSent"){
+  body+='<div class="auth-switch"><button type="button" data-auth="signin">Back to sign in</button></div>';
+ }else if(mode==="reset"){
+  body+='<form class="auth-form" id="authForm"><label class="field">New password<input name="password" type="password" minlength="8" autocomplete="new-password" required></label><label class="field">Confirm new password<input name="confirm_password" type="password" minlength="8" autocomplete="new-password" required></label><button type="submit" class="primary-btn">Save new password</button></form>';
  }else{
   body+='<form class="auth-form" id="authForm"><label class="field">Email address<input name="email" type="email" autocomplete="email" required></label><label class="field">Password<input name="password" type="password" minlength="6" autocomplete="'+(mode==="signup"?"new-password":"current-password")+'" required></label><button type="submit" class="primary-btn">'+(mode==="signup"?"Create account":"Sign in")+'</button></form>';
-  body+='<div class="auth-switch">'+(mode==="signup"?'Already have an account? <button type="button" data-auth="signin">Sign in</button>':'New teammate? <button type="button" data-auth="signup">Create account</button>')+'</div>';
+  body+='<div class="auth-switch">'+(mode==="signup"?'Already have an account? <button type="button" data-auth="signin">Sign in</button>':'New teammate? <button type="button" data-auth="signup">Create account</button> · <button type="button" data-auth="forgot">Forgot password?</button>')+'</div>';
  }
  el("authBody").innerHTML=body;el("authLayer").dataset.mode=mode;
 }
@@ -373,6 +398,18 @@ async function authSubmit(e){
    var r=await app.client.rpc("create_workspace",{workspace_name:values.name});
    if(r.error)throw r.error;
    await loadWorkspace();notify("Workspace created.");
+  }else if(mode==="forgot"){
+   var reset=await app.client.auth.resetPasswordForEmail(values.email.trim(),{redirectTo:new URL('./',window.location.href).href});
+   if(reset.error)throw reset.error;
+   showAuth("forgotSent");
+  }else if(mode==="reset"){
+   if(values.password!==values.confirm_password)throw new Error("Passwords do not match.");
+   if(values.password.length<8)throw new Error("Use at least 8 characters.");
+   var changed=await app.client.auth.updateUser({password:values.password});
+   if(changed.error)throw changed.error;
+   app.recoveryMode=false;
+   await app.client.auth.signOut();
+   showAuth("signin","Password updated. Sign in with your new password.");
   }else if(mode==="signup"){
    var s=await app.client.auth.signUp({email:values.email.trim(),password:values.password,options:{emailRedirectTo:new URL('./',window.location.href).href}});
    if(s.error)throw s.error;
