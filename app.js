@@ -387,7 +387,7 @@ async function saveModal(event){
    }else if(kind==="email"){
    d.to_email=(d.to_email||"").trim().toLowerCase();d.subject=(d.subject||"").trim();d.body=(d.body||"").trim();
    d.basis_note=(d.basis_note||"").trim();d.company_id=d.company_id||null;
-   if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(d.to_email))throw new Error("Enter a valid customer email.");
+   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.to_email))throw new Error("Enter a valid customer email.");
    if(!d.subject||!d.body)throw new Error("Add a subject and message.");
    if(m.id&&!app.email_messages.some(function(x){return String(x.id)===String(m.id)&&x.status==="draft";}))throw new Error("Only drafts can be edited.");
    d.updated_at=new Date().toISOString();
