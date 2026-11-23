@@ -15,7 +15,7 @@ var STAGES=[
 ];
 var priorities=["hot","warm","cold"];
 var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:"dashboard",selectedCompany:null,
-  companies:[],contacts:[],activities:[],tasks:[],members:[],invites:[],search:"",filter:"all",taskFilter:"open",
+  companies:[],contacts:[],activities:[],tasks:[],email_messages:[],emailFeatureError:null,members:[],invites:[],search:"",filter:"all",taskFilter:"open",
   modal:null,busy:false,channel:null,recoveryMode:false};
 var el=function(id){return document.getElementById(id);};
 var encode=function(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");};
@@ -57,6 +57,8 @@ function demo(){
   {id:"t3",company_id:"demo-3",title:"Send presentation link",assigned_to:"marie",due_date:"2026-12-01",priority:"normal",completed:false},
   {id:"t4",company_id:"demo-5",title:"Clarify requested model count",assigned_to:"zanna",due_date:"2026-12-03",priority:"high",completed:true}
  ];
+ app.email_messages=[{id:"sample-mail-1",company_id:"demo-1",created_by:"marie",to_email:"example@example.invalid",subject:"Follow-up after your demonstration",body:"Hello,\n\nThank you for your interest in Home View Solutions.\n\nBest regards,\nHome View Solutions",legal_basis:"review_required",basis_note:"",status:"draft",created_at:"2026-11-23T08:00:00Z"}];
+ app.emailFeatureError=null;
  app.invites=[];app.user=null;app.workspace=null;app.role="demo";
  render();
 }
@@ -133,6 +135,10 @@ async function refresh(){
  var failure=all.find(function(x){return x.error;});if(failure)throw failure.error;
  app.companies=all[0].data||[];app.contacts=all[1].data||[];app.activities=all[2].data||[];
  app.tasks=all[3].data||[];app.members=all[4].data||[];app.invites=app.role==="admin"?(all[5].data||[]):[];
+ // Optional feature: never block existing CRM logins if email setup is not installed.
+ var mail=await app.client.from("email_messages").select("*").eq("workspace_id",wid).order("created_at",{ascending:false}).limit(200);
+ app.emailFeatureError=mail.error?mail.error.message:null;
+ app.email_messages=mail.data||[];
  render();
 }
 function attachRealtime(){
@@ -151,7 +157,7 @@ function attachRealtime(){
 function go(view){app.view=view;app.selectedCompany=null;app.search="";app.filter="all";el("sidebar").classList.remove("open");render();window.scrollTo(0,0);}
 function openCompany(id){if(!company(id))return;app.selectedCompany=id;app.view="detail";render();window.scrollTo(0,0);}
 function navTitle(){
- var titles={dashboard:["Dashboard","An overview of your builder relationships."],companies:["Companies","Every prospect, contact and conversation in one place."],pipeline:["Sales pipeline","Move relationships forward, one step at a time."],tasks:["Follow-ups & tasks","Know exactly who needs to do what next."],settings:["Team & settings","Your shared CRM workspace."],detail:["Company details","Contacts, notes and follow-ups for this builder."]};
+ var titles={dashboard:["Dashboard","An overview of your builder relationships."],companies:["Companies","Every prospect, contact and conversation in one place."],pipeline:["Sales pipeline","Move relationships forward, one step at a time."],tasks:["Follow-ups & tasks","Know exactly who needs to do what next."],emails:["Email drafts","Prepare sales messages together. Sending is not connected yet."],settings:["Team & settings","Your shared CRM workspace."],detail:["Company details","Contacts, notes and follow-ups for this builder."]};
  return titles[app.view]||titles.dashboard;
 }
 function notice(){
@@ -162,7 +168,7 @@ function render(){
  var label=navTitle();el("pageTitle").textContent=app.view==="detail"?(company(app.selectedCompany)||{}).name||"Company details":label[0];
  el("pageSubtitle").textContent=label[1];el("notice").innerHTML=notice();
  var primary=el("primaryAction");
- var act={dashboard:["+ Add company","company"],companies:["+ Add company","company"],pipeline:["+ Add company","company"],tasks:["+ Add task","task"],settings:["+ Invite teammate","invite"],detail:["+ Log activity","activity"]}[app.view]||["+ Add company","company"];
+ var act={dashboard:["+ Add company","company"],companies:["+ Add company","company"],pipeline:["+ Add company","company"],tasks:["+ Add task","task"],emails:["+ New email draft","email"],settings:["+ Invite teammate","invite"],detail:["+ Log activity","activity"]}[app.view]||["+ Add company","company"];
  primary.textContent=act[0];primary.dataset.modal=act[1];primary.style.display=app.view==="settings"&&app.role!=="admin"?"none":"";
  Array.prototype.forEach.call(document.querySelectorAll("[data-nav]"),function(n){n.classList.toggle("active",n.dataset.nav===app.view||(app.view==="detail"&&n.dataset.nav==="companies"));});
  var who=app.member?(app.member.display_name||app.member.email):"Preview workspace";
@@ -172,6 +178,7 @@ function render(){
  if(app.view==="companies")el("view").innerHTML=renderCompanies();
  else if(app.view==="pipeline")el("view").innerHTML=renderPipeline();
  else if(app.view==="tasks")el("view").innerHTML=renderTasks();
+ else if(app.view==="emails")el("view").innerHTML=renderEmails();
  else if(app.view==="settings")el("view").innerHTML=renderSettings();
  else if(app.view==="detail")el("view").innerHTML=renderDetail();
  else el("view").innerHTML=renderDashboard();
