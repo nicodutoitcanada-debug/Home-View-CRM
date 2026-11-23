@@ -252,6 +252,20 @@ function renderDetail(){
  h+='<section class="panel" style="margin-top:18px"><div class="panel-head"><div class="panel-title">Next steps</div><button class="text-action" data-modal="task" data-parent="'+encode(c.id)+'">+ Add task</button></div><div class="panel-body">'+(tasks.length?tasks.map(taskRow).join(""):'<div class="empty">No follow-ups assigned yet.</div>')+'</div></section></div></div>';
  return h;
 }
+function renderEmails(){
+ var h='<div class="banner"><div><strong>DRAFT MODE — NO EMAILS WILL BE SENT.</strong> Write and save messages here. We will connect sales@homeviewsolutions.com only after the mailbox and sending provider are verified.</div></div>';
+ if(app.emailFeatureError&&!app.preview){
+  h+='<div class="banner"><div>Email draft storage has not been installed yet. Apply the separate supabase/email-drafts.sql setup script before saving real drafts. Existing CRM features still work.</div></div>';
+ }
+ h+='<section class="panel"><div class="panel-head"><div><div class="panel-title">Team email drafts</div><div class="panel-kicker">Visible to authorized CRM members; editable only by the author</div></div><button type="button" class="text-action" data-modal="email">+ Compose</button></div><div class="panel-body">';
+ h+=app.email_messages.length?app.email_messages.map(function(m){
+  var by=memberName(m.created_by),canEdit=m.status==="draft"&&(app.preview||app.user&&app.user.id===m.created_by);
+  return '<div class="email-row"><div class="email-row-main"><div class="task-title">'+encode(m.subject)+'</div><div class="task-due">To: '+encode(m.to_email)+' · '+encode(companyName(m.company_id))+' · '+encode(by)+'</div><div class="email-preview">'+encode((m.body||"").slice(0,180))+'</div><div class="task-due">'+encode(String(m.status||"draft").toUpperCase())+' · '+encode(fmtDate(m.created_at))+'</div></div>'+(canEdit?'<button type="button" class="secondary-btn" data-edit-email="'+encode(m.id)+'">Edit draft</button>':"")+'</div>';
+ }).join(""):'<div class="empty">No email drafts yet. Click Compose to create your first one.</div>';
+ h+='</div></section>';
+ h+='<p class="hint" style="margin-top:15px">This is not an Outlook inbox. Marie’s personal mailbox stays private. Customer replies and outgoing sending require a later setup step.</p>';
+ return h;
+}
 function renderSettings(){
  if(app.preview)return '<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Connect your database</div></div><div class="panel-body"><p class="hint">This is a safe, fictional preview. To share real client information between Marie and Zanna, connect a Supabase project and install the database schema from this repository.</p><button class="primary-btn" data-action="connect">Set up secure database</button></div></section></div>';
  var h='<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Workspace</div></div><div class="panel-body"><div class="field-key">Name</div><div class="company-name">'+encode(app.workspace.name)+'</div><div class="hint">Every member below shares one protected set of companies, contacts, notes and tasks.</div></div></section>';
