@@ -65,7 +65,7 @@ The branch `feature/email-drafts-20261123` prepares a **draft-only** email compo
 
 - Adds `Email drafts` navigation, compose/edit modal, customer email, subject, body, related company and legal-basis notes.
 - Drafts are visible to CRM workspace members, while only their author can edit a draft.
-- Supabase setup: run `supabase/email-drafts.sql` **once** on the existing **Home View CRM** project (not the separate demo database) before enabling the feature.
+- Supabase storage **installed on 2026-11-23** in the existing **Home View CRM** project. The file `supabase/email-drafts.sql` is retained as the deployment record. **Do not re-run it** in that project.
 - The SQL creates only the new `email_messages` table with row-level security; it does not modify existing CRM tables.
 - The frontend treats a missing `email_messages` table as optional and keeps existing CRM pages functional.
 - Sender credentials must **never** go into GitHub, `config.js`, browser storage or the client code.
@@ -73,4 +73,4 @@ The branch `feature/email-drafts-20261123` prepares a **draft-only** email compo
 - `sales@homeviewsolutions.com` is not created by this code. Marie's mailbox remains separate. Incoming replies will not appear in the CRM until a later inbound integration.
 - Do not send prospecting emails through a transactional-only API. Distinguish requested customer responses from commercial outreach, and verify consent or an applicable exemption under CASL as well as provider policy.
 
-**Release sequence:** Review draft PR, apply and verify SQL, test with two CRM accounts (including unauthorized access), verify sending service and reply routing, then merge with a separate explicit go-live step.
+**Release sequence:** Review draft PR, test with two CRM accounts (including unauthorized access), verify sending service and reply routing, then merge with a separate explicit go-live step. RLS and grants were checked after applying SQL; interactive user isolation tests remain.
