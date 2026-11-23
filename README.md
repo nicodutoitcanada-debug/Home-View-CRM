@@ -58,3 +58,19 @@ The GitHub repository and its assets may be **public**. Never commit customer re
 ## Safely testing real data
 
 Log in as administrator and create a fake test company. Sign in as an invited teammate using a different browser and confirm the same company appears. Test a note and a completed task. To test workspace isolation, register a separate account without an invitation, create its own workspace, and confirm the first workspace's records are unavailable. Avoid entering real client information until these checks pass.
+
+## Email drafts — staged feature, NOT active on the live CRM (2026-11-23)
+
+The branch `feature/email-drafts-20261123` prepares a **draft-only** email composer for sales representatives without Microsoft 365 accounts. It is deliberately not merged into `main` and **cannot send email**.
+
+- Adds `Email drafts` navigation, compose/edit modal, customer email, subject, body, related company and legal-basis notes.
+- Drafts are visible to CRM workspace members, while only their author can edit a draft.
+- Supabase setup: run `supabase/email-drafts.sql` **once** on the existing **Home View CRM** project (not the separate demo database) before enabling the feature.
+- The SQL creates only the new `email_messages` table with row-level security; it does not modify existing CRM tables.
+- The frontend treats a missing `email_messages` table as optional and keeps existing CRM pages functional.
+- Sender credentials must **never** go into GitHub, `config.js`, browser storage or the client code.
+- Sending/replies are **not implemented**. A later server-side send function needs sender verification, provider selection appropriate to the message type, strict auth/workspace checks, send audit log, rate limiting and CASL compliance controls.
+- `sales@homeviewsolutions.com` is not created by this code. Marie's mailbox remains separate. Incoming replies will not appear in the CRM until a later inbound integration.
+- Do not send prospecting emails through a transactional-only API. Distinguish requested customer responses from commercial outreach, and verify consent or an applicable exemption under CASL as well as provider policy.
+
+**Release sequence:** Review draft PR, apply and verify SQL, test with two CRM accounts (including unauthorized access), verify sending service and reply routing, then merge with a separate explicit go-live step.
