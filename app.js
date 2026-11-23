@@ -313,6 +313,22 @@ function openModal(kind,record,parent){
   input("due_date","Due date",r.due_date||isoToday(),"date",false,false)+
   select("assigned_to","Assigned to",memberOptions(),r.assigned_to||(app.user?app.user.id:"marie"))+
   select("priority","Priority",[["normal","Normal"],["high","High"]],r.priority||"normal");
+ }else if(kind==="email"){
+  title=r.id?"Edit email draft":"Compose email draft";
+  var suggested=app.contacts.find(function(c){return c.company_id===cid&&c.email;});
+  body=input("to_email","Customer email",r.to_email||(suggested?suggested.email:""),"email",true,true)+
+    input("subject","Subject",r.subject,"text",true,true,'maxlength="250"')+
+    select("company_id","Related company",companyOptions(),r.company_id||cid,true)+
+    area("body","Message (draft only)",r.body)+
+    select("legal_basis","Email permission / exemption to review",[
+      ["review_required","Not yet checked"],
+      ["customer_request","Customer requested follow-up"],
+      ["express_consent","Express consent"],
+      ["implied_consent","Implied consent"],
+      ["b2b_exemption","Potential B2B exemption — verify"]
+    ],r.legal_basis||"review_required",true)+
+    area("basis_note","Notes on permission or relationship (optional)",r.basis_note||"")+
+    '<div class="hint" style="grid-column:1/-1">Only saves a draft. Nothing will be sent. Before sending sales emails, verify applicable Canadian anti-spam requirements and your email provider\'s rules.</div>';
  }else if(kind==="invite"){
   title="Invite teammate";body=input("email","Teammate's email",r.email,"email",true,true)+
   '<div class="hint" style="grid-column:1/-1">This grants access after that person signs up with the exact same verified email. No email message will be sent automatically.</div>';
@@ -324,7 +340,7 @@ function openModal(kind,record,parent){
  }else return;
  app.modal={kind:kind,id:r.id||null,parent:cid};
  el("modalTitle").textContent=title;
- el("modalForm").innerHTML='<div class="form-grid">'+body+'</div><div class="form-actions"><button class="secondary-btn" type="button" data-action="closeModal">Cancel</button><button class="primary-btn" type="submit">'+(kind==="connect"?"Save connection":kind==="invite"?"Invite":r.id?"Save changes":"Save")+'</button></div>';
+ el("modalForm").innerHTML='<div class="form-grid">'+body+'</div><div class="form-actions"><button class="secondary-btn" type="button" data-action="closeModal">Cancel</button><button class="primary-btn" type="submit">'+(kind==="connect"?"Save connection":kind==="invite"?"Invite":kind==="email"?"Save draft":r.id?"Save changes":"Save")+'</button></div>';
  el("modalBackdrop").classList.remove("hidden");
  var first=el("modalForm").querySelector("input,select,textarea");if(first)first.focus();
 }
@@ -368,6 +384,15 @@ async function saveModal(event){
    d.company_id=d.company_id||null;d.assigned_to=d.assigned_to||null;d.due_date=d.due_date||null;
    if(!m.id){d.completed=false;d.created_by=app.preview?"marie":app.user.id;}
    await saveRow("tasks",d,m.id);
+   }else if(kind==="email"){
+   d.to_email=(d.to_email||"").trim().toLowerCase();d.subject=(d.subject||"").trim();d.body=(d.body||"").trim();
+   d.basis_note=(d.basis_note||"").trim();d.company_id=d.company_id||null;
+   if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(d.to_email))throw new Error("Enter a valid customer email.");
+   if(!d.subject||!d.body)throw new Error("Add a subject and message.");
+   if(m.id&&!app.email_messages.some(function(x){return String(x.id)===String(m.id)&&x.status==="draft";}))throw new Error("Only drafts can be edited.");
+   d.updated_at=new Date().toISOString();
+   if(!m.id){d.created_by=app.preview?"marie":app.user.id;d.status="draft";}
+   await saveRow("email_messages",d,m.id);
   }else if(kind==="invite"){
    if(app.preview)throw new Error("Connect Supabase to invite teammates.");
    if(app.role!=="admin")throw new Error("Only a workspace admin can invite new members.");
@@ -460,6 +485,12 @@ function delegateClick(e){
   var kind=modal.dataset.modal,record=null,id=modal.dataset.editId;
   if(id&&kind==="company")record=company(id);
   openModal(kind,record,modal.dataset.parent);return;
+ }
+ var editEmail=e.target.closest("[data-edit-email]");
+ if(editEmail){
+  var msg=app.email_messages.find(function(x){return String(x.id)===String(editEmail.dataset.editEmail);});
+  if(msg&&msg.status==="draft")openModal("email",msg,null);
+  return;
  }
  var editTask=e.target.closest("[data-edit-task]");
  if(editTask){openModal("task",app.tasks.find(function(x){return String(x.id)===String(editTask.dataset.editTask);}),null);return;}
