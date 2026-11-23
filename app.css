@@ -20,3 +20,11 @@
 .board-col.drag-over{outline-color:var(--orange-bright)}
 .board-card:hover{border-color:rgba(222,50,8,.38)}
 .task-box{accent-color:var(--orange)}
+
+/* Team email draft feature (disabled sender by design). */
+.email-row{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}
+.email-row:last-child{border-bottom:0}
+.email-row-main{flex:1;min-width:0}
+.email-row .secondary-btn{white-space:nowrap}
+.email-preview{font-size:12px;line-height:1.55;color:#667588;margin:8px 0;white-space:pre-line;overflow-wrap:anywhere}
+@media(max-width:700px){.email-row{flex-direction:column;gap:9px}}
