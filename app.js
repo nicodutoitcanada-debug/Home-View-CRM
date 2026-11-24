@@ -405,7 +405,20 @@ function renderSettings(){
   h+=(app.invites.length?app.invites.map(function(i){return '<div class="contact-row"><div class="activity-details"><div class="task-title">'+encode(i.email)+'</div><div class="task-due">'+(i.accepted_at?"Joined":"Waiting for sign-up")+'</div></div></div>';}).join(""):'<div class="hint">No invitations yet.</div>');
   h+='<p class="hint">Inviting someone authorizes their matching, verified email address. Ask them to open this CRM and create an account using that same email. The CRM does not automatically email invitations.</p>';
  }
- h+='</div></section><section class="panel"><div class="panel-head"><div class="panel-title">Privacy & setup</div></div><div class="panel-body"><p class="hint">All customer records live in Supabase and are protected by workspace membership policies. This public GitHub Pages site contains frontend code only. Never place a service-role key or client export in GitHub.</p></div></section></div>';
+ h+='</div></section>';
+ var alertSwitches=[
+  ["enabled","All CRM alerts"],["company_alerts","New leads and company updates"],
+  ["activity_alerts","Calls, notes and customer activity"],["task_alerts","Newly assigned tasks"],
+  ["email_alerts","New email drafts and email activity"]
+ ];
+ h+='<section class="panel"><div class="panel-head"><div><div class="panel-title">Notification preferences</div><div class="panel-kicker">Choose the alerts you receive</div></div></div><div class="panel-body">';
+ if(app.settingsError)h+='<p class="hint">Settings could not load: '+encode(app.settingsError)+'</p>';
+ h+=alertSwitches.map(function(k){
+  var checked=!app.alertSettings||app.alertSettings[k[0]]!==false;
+  return '<label class="alert-preference"><input type="checkbox" data-alert-setting="'+encode(k[0])+'" '+(checked?'checked':'')+'><span>'+encode(k[1])+'</span></label>';
+ }).join("");
+ h+='<p class="hint" style="margin-top:14px">In-app notifications are available now. Background push to a closed phone app needs the final web-push delivery setup, followed by permission on each device.</p></div></section>';
+ h+='<section class="panel"><div class="panel-head"><div class="panel-title">Privacy & setup</div></div><div class="panel-body"><p class="hint">All customer records live in Supabase and are protected by workspace membership policies. This public GitHub Pages site contains frontend code only. Never place a service-role key or client export in GitHub.</p></div></section></div>';
  return h;
 }
 function input(name,label,v,type,required,full,extra){
@@ -597,7 +610,12 @@ async function authSubmit(e){
  }catch(err){showAuth(mode,err.message||"Please try again.");}
  finally{button.disabled=false;}
 }
-async function signout(){if(app.client){await app.client.auth.signOut();}app.user=null;app.member=null;app.workspace=null;app.role="";demo();render();showAuth("signin");}
+async function signout(){
+ if(app.client){
+  if(app.channel){app.client.removeChannel(app.channel);app.channel=null;}
+  if(app.alertChannel){app.client.removeChannel(app.alertChannel);app.alertChannel=null;}
+  await app.client.auth.signOut();
+ }app.user=null;app.member=null;app.workspace=null;app.role="";demo();render();showAuth("signin");}
 function delegateClick(e){
  var nav=e.target.closest("[data-nav]");if(nav){go(nav.dataset.nav);return;}
  var act=e.target.closest("[data-action]");
@@ -606,6 +624,7 @@ function delegateClick(e){
   if(action==="connect")openModal("connect");
   else if(action==="viewTasks")go("tasks");
   else if(action==="viewCompanies"||action==="back")go("companies");
+   else if(action==="markAllAlertsRead")markAllAlertsRead().catch(function(e){notify(e.message,true);});
   else if(action==="closeModal")closeModal();
   return;
  }
@@ -615,6 +634,10 @@ function delegateClick(e){
   if(id&&kind==="company")record=company(id);
   openModal(kind,record,modal.dataset.parent);return;
  }
+ var openAlertItem=e.target.closest("[data-open-alert]");
+ if(openAlertItem){openAlert(openAlertItem.dataset.openAlert).catch(function(err){notify(err.message,true);});return;}
+ var markAlert=e.target.closest("[data-read-alert]");
+ if(markAlert){markAlertRead(markAlert.dataset.readAlert).catch(function(err){notify(err.message,true);});return;}
  var editEmail=e.target.closest("[data-edit-email]");
  if(editEmail){
   var msg=app.email_messages.find(function(x){return String(x.id)===String(editEmail.dataset.editEmail);});
@@ -628,6 +651,8 @@ function delegateClick(e){
  var item=e.target.closest("[data-open-company]");if(item){openCompany(item.dataset.openCompany);}
 }
 function delegateChange(e){
+ var alertSetting=e.target.closest("[data-alert-setting]");
+ if(alertSetting){updateAlertSetting(alertSetting.dataset.alertSetting,alertSetting.checked);return;}
  var check=e.target.closest("[data-task-check]");if(check){toggleTask(check.dataset.taskCheck,check.checked);return;}
  var filter=e.target.closest("[data-filter]");
  if(filter){
@@ -650,6 +675,7 @@ function setupListeners(){
  el("closeModal").addEventListener("click",closeModal);
  el("modalForm").addEventListener("submit",saveModal);
  el("primaryAction").addEventListener("click",function(){openModal(this.dataset.modal);});
+ el("alertsButton").addEventListener("click",function(){go("alerts");});
  el("mobileMenu").addEventListener("click",function(){el("sidebar").classList.toggle("open");});
  el("logoutBtn").addEventListener("click",signout);
  el("authLayer").addEventListener("submit",function(e){if(e.target.matches("#authForm,#workspaceForm"))authSubmit(e);});
