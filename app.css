@@ -53,3 +53,5 @@
  .alert-item{flex-direction:column}
  .alert-actions{justify-content:flex-start}
 }
+
+.push-setup{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}.push-setup .secondary-btn{margin-top:8px}
