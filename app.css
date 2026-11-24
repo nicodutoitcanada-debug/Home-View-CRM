@@ -28,3 +28,28 @@
 .email-row .secondary-btn{white-space:nowrap}
 .email-preview{font-size:12px;line-height:1.55;color:#667588;margin:8px 0;white-space:pre-line;overflow-wrap:anywhere}
 @media(max-width:700px){.email-row{flex-direction:column;gap:9px}}
+
+/* CRM notification center and individual alert preferences. */
+.topbar-actions{display:flex;align-items:center;gap:10px}
+.alert-bell{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:42px;height:40px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);font-size:21px;cursor:pointer}
+.alert-bell:hover{border-color:var(--orange)}
+.alert-pill{display:inline-block;min-width:17px;padding:3px 5px;border-radius:10px;color:#fff;background:var(--orange);font-size:10px;font-weight:800;text-align:center;line-height:1.2}
+.alert-bell .alert-pill{position:absolute;right:-7px;top:-7px}
+.alert-pill.hidden{display:none}
+.nav-btn .alert-pill{margin-left:auto}
+.alert-heading{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:16px}
+.alert-list{padding-top:5px}
+.alert-item{display:flex;justify-content:space-between;gap:14px;padding:17px 0;border-bottom:1px solid var(--line)}
+.alert-item:last-child{border-bottom:0}
+.alert-unread{border-left:3px solid var(--orange);padding-left:13px;background:linear-gradient(90deg,rgba(229,70,20,.04),transparent)}
+.alert-content{flex:1;min-width:0}
+.alert-content .info-text{margin:6px 0}
+.alert-actions{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.alert-preference{display:flex;align-items:center;gap:12px;margin:12px 0;font-size:12px;font-weight:600;cursor:pointer}
+.alert-preference input{width:17px;height:17px;accent-color:var(--orange)}
+@media(max-width:700px){
+ .topbar-actions{gap:8px}
+ .alert-bell{min-width:36px;height:38px}
+ .alert-item{flex-direction:column}
+ .alert-actions{justify-content:flex-start}
+}
