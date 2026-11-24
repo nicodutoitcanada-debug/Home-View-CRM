@@ -293,6 +293,108 @@ function renderEmails(){
  h+='<p class="hint" style="margin-top:15px">This is not an Outlook inbox. Marie’s personal mailbox stays private. Customer replies and outgoing sending require a later setup step.</p>';
  return h;
 }
+function updateAlertBadge(){
+ var count=app.alerts.filter(function(n){return !n.read_at;}).length;
+ ["alertsCount","alertsNavCount"].forEach(function(id){
+  var item=el(id);if(!item)return;
+  item.textContent=count>99?"99+":String(count);
+  item.classList.toggle("hidden",count===0);
+ });
+ var btn=el("alertsButton");
+ if(btn)btn.setAttribute("aria-label","Notifications"+(count?" ("+count+" unread)":""));
+}
+async function loadAlerts(){
+ if(app.preview||!app.user||!app.workspace){updateAlertBadge();return;}
+ var uid=app.user.id,wid=app.workspace.id;
+ var result=await app.client.from("crm_notifications")
+  .select("id,recipient_id,event_kind,title,message,company_id,task_id,email_id,read_at,created_at")
+  .eq("workspace_id",wid).eq("recipient_id",uid)
+  .order("created_at",{ascending:false}).limit(150);
+ if(app.preview||!app.user||app.user.id!==uid||!app.workspace||app.workspace.id!==wid)return;
+ if(result.error){app.alertError=result.error.message;throw result.error;}
+ app.alerts=result.data||[];app.alertError=null;
+ updateAlertBadge();
+ if(app.view==="alerts")el("view").innerHTML=renderAlerts();
+}
+async function loadAlertSettings(){
+ if(app.preview||!app.user||!app.workspace)return;
+ var r=await app.client.from("crm_notification_settings").select("*").eq("user_id",app.user.id).eq("workspace_id",app.workspace.id).maybeSingle();
+ if(r.error){app.settingsError=r.error.message;throw r.error;}
+ app.alertSettings=r.data||null;app.settingsError=null;
+ if(app.view==="settings")el("view").innerHTML=renderSettings();
+}
+async function updateAlertSetting(name,enabled){
+ var allowed=["enabled","company_alerts","activity_alerts","task_alerts","email_alerts"];
+ if(allowed.indexOf(name)<0||app.preview||!app.user||!app.workspace)return;
+ try{
+  var data={},r;
+  data[name]=enabled;
+  if(app.alertSettings){
+   data.updated_at=new Date().toISOString();
+   r=await app.client.from("crm_notification_settings").update(data)
+    .eq("user_id",app.user.id).eq("workspace_id",app.workspace.id);
+  }else{
+   r=await app.client.from("crm_notification_settings").insert(Object.assign({
+    user_id:app.user.id,workspace_id:app.workspace.id
+   },data));
+  }
+  if(r.error)throw r.error;
+  app.alertSettings=Object.assign({
+   enabled:true,company_alerts:true,activity_alerts:true,task_alerts:true,email_alerts:true
+  },app.alertSettings||{},data);
+  notify("Notification preference saved.");
+  if(app.view==="settings")el("view").innerHTML=renderSettings();
+ }catch(err){
+  notify(err.message||"Unable to save notification preference.",true);
+  await loadAlertSettings().catch(function(){});
+ }
+}
+function renderAlerts(){
+ var count=app.alerts.filter(function(n){return !n.read_at;}).length;
+ var h='<div class="alert-heading"><div><div class="section-title">Your notifications</div><div class="hint">'+count+' unread update'+(count===1?"":"s")+'</div></div>';
+ if(count)h+='<button type="button" class="secondary-btn" data-action="markAllAlertsRead">Mark all read</button>';
+ h+='</div>';
+ if(app.alertError)h+='<div class="banner"><div>Unable to load your notifications: '+encode(app.alertError)+'</div></div>';
+ h+='<section class="panel"><div class="panel-body alert-list">';
+ if(!app.alerts.length)h+='<div class="empty">No notifications yet. New customer notes, lead updates, tasks and email drafts will appear here.</div>';
+ else h+=app.alerts.map(function(n){
+  var when=n.created_at?new Date(n.created_at).toLocaleString("en-CA",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"";
+  return '<div class="alert-item'+(!n.read_at?' alert-unread':'')+'">'
+   +'<div class="alert-content"><div class="task-title">'+encode(n.title)+'</div><div class="info-text">'+encode(n.message)+'</div><div class="task-due">'+encode(when)+' · '+(n.read_at?'Read':'New')+'</div></div>'
+   +'<div class="alert-actions"><button type="button" class="secondary-btn" data-open-alert="'+encode(n.id)+'">Open</button>'
+   +(!n.read_at?'<button type="button" class="text-action" data-read-alert="'+encode(n.id)+'">Mark read</button>':'')
+   +'</div></div>';
+ }).join("");
+ h+='</div></section>';
+ h+='<p class="hint" style="margin-top:14px">Notifications are visible only to your authorized account. Phone push alerts require a separate device permission and background delivery setup.</p>';
+ return h;
+}
+async function markAlertRead(id){
+ var record=app.alerts.find(function(n){return String(n.id)===String(id);});
+ if(!record||record.read_at)return;
+ if(app.preview){
+  record.read_at=new Date().toISOString();render();return;
+ }
+ var r=await app.client.from("crm_notifications").update({read_at:new Date().toISOString()})
+  .eq("id",id).eq("recipient_id",app.user.id);
+ if(r.error)throw r.error;
+ await loadAlerts();
+}
+async function markAllAlertsRead(){
+ if(app.preview){app.alerts.forEach(function(n){n.read_at=n.read_at||new Date().toISOString();});render();return;}
+ var r=await app.client.from("crm_notifications").update({read_at:new Date().toISOString()})
+  .eq("recipient_id",app.user.id).eq("workspace_id",app.workspace.id).is("read_at",null);
+ if(r.error)throw r.error;
+ await loadAlerts();
+}
+async function openAlert(id){
+ var n=app.alerts.find(function(x){return String(x.id)===String(id);});if(!n)return;
+ try{await markAlertRead(id);}catch(e){notify(e.message,true);}
+ if(n.company_id&&company(n.company_id)){openCompany(n.company_id);return;}
+ if(n.email_id){go("emails");return;}
+ if(n.task_id){go("tasks");return;}
+ go("dashboard");
+}
 function renderSettings(){
  if(app.preview)return '<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Connect your database</div></div><div class="panel-body"><p class="hint">This is a safe, fictional preview. To share real client information between Marie and Zanna, connect a Supabase project and install the database schema from this repository.</p><button class="primary-btn" data-action="connect">Set up secure database</button></div></section></div>';
  var h='<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Workspace</div></div><div class="panel-body"><div class="field-key">Name</div><div class="company-name">'+encode(app.workspace.name)+'</div><div class="hint">Every member below shares one protected set of companies, contacts, notes and tasks.</div></div></section>';
