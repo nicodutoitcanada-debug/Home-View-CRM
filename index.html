@@ -17,13 +17,15 @@
     <button type="button" class="nav-btn" data-nav="companies"><span class="nav-icon">▤</span> Companies</button>
     <button type="button" class="nav-btn" data-nav="pipeline"><span class="nav-icon">◫</span> Sales pipeline</button>
     <button type="button" class="nav-btn" data-nav="tasks"><span class="nav-icon">☑</span> Follow-ups & tasks</button>
+    <button type="button" class="nav-btn" data-nav="emails"><span class="nav-icon">✉</span> Email drafts</button>
+    <button type="button" class="nav-btn" data-nav="alerts"><span class="nav-icon">🔔</span> Notifications <span class="alert-pill hidden" id="alertsNavCount">0</span></button>
   </nav>
   <div class="sidebar-label" style="margin-top:17px">Management</div>
   <nav class="nav"><button type="button" class="nav-btn" data-nav="settings"><span class="nav-icon">⚙</span> Team & settings</button></nav>
   <div class="sidebar-bottom"><div class="profile"><div class="avatar" id="userAvatar">HV</div><div><div class="profile-name" id="userName">Preview workspace</div><div class="profile-caption" id="userRole">Home View Solutions</div></div></div><button class="logout hidden" id="logoutBtn" type="button">Sign out →</button></div>
 </aside>
 <main class="workspace">
-  <div class="topbar"><div class="heading"><div class="eyebrow">HOME VIEW SOLUTIONS / SALES HUB</div><h1 id="pageTitle">Dashboard</h1><div class="subheading" id="pageSubtitle">Keep every builder conversation moving.</div></div><button type="button" class="primary-btn" id="primaryAction">+ Add company</button></div>
+  <div class="topbar"><div class="heading"><div class="eyebrow">HOME VIEW SOLUTIONS / SALES HUB</div><h1 id="pageTitle">Dashboard</h1><div class="subheading" id="pageSubtitle">Keep every builder conversation moving.</div></div><div class="topbar-actions"><button type="button" class="alert-bell" id="alertsButton" aria-label="Notifications">🔔 <span class="alert-pill hidden" id="alertsCount">0</span></button><button type="button" class="primary-btn" id="primaryAction">+ Add company</button></div></div>
   <div id="notice"></div>
   <div id="view" aria-live="polite"></div>
 </main></div>
@@ -32,5 +34,5 @@
 <div role="status" class="toast hidden" id="toast"></div>
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20261112-password-reset" defer></script>
+<script src="app.js?v=20261124-crm-alerts" defer></script>
 </body></html>

@@ -2,5 +2,7 @@
 // Never add secret or service_role keys here.
 window.HVS_CONFIG = {
   supabaseUrl: "https://qtbbkkddbxpwfcbernpq.supabase.co",
-  supabaseAnonKey: "sb_publishable_0yjopLweKKuOouv0FzdCQw_NM-HoBu3"
+  supabaseAnonKey: "sb_publishable_0yjopLweKKuOouv0FzdCQw_NM-HoBu3",
+  // Public VAPID key only; enable after server-side delivery setup.
+  webPushPublicKey: ""
 };

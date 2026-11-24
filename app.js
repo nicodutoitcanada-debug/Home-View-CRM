@@ -14,9 +14,9 @@ var STAGES=[
   {id:"lost",name:"Lost"}
 ];
 var priorities=["hot","warm","cold"];
-var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:"dashboard",selectedCompany:null,
-  companies:[],contacts:[],activities:[],tasks:[],members:[],invites:[],search:"",filter:"all",taskFilter:"open",
-  modal:null,busy:false,channel:null,recoveryMode:false};
+var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:new URLSearchParams(window.location.search).has("alerts")?"alerts":"dashboard",selectedCompany:null,
+  companies:[],contacts:[],activities:[],tasks:[],email_messages:[],emailFeatureError:null,members:[],invites:[],search:"",filter:"all",taskFilter:"open",
+  modal:null,busy:false,channel:null,alertChannel:null,alerts:[],alertSettings:null,alertError:null,settingsError:null,phonePushEnabled:false,recoveryMode:false};
 var el=function(id){return document.getElementById(id);};
 var encode=function(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");};
 var fmtDate=function(s){if(!s)return "Not scheduled";var d=new Date(String(s).slice(0,10)+"T12:00:00");return isNaN(d.getTime())?"—":d.toLocaleDateString("en-CA",{month:"short",day:"numeric",year:"numeric"});};
@@ -57,6 +57,10 @@ function demo(){
   {id:"t3",company_id:"demo-3",title:"Send presentation link",assigned_to:"marie",due_date:"2026-12-01",priority:"normal",completed:false},
   {id:"t4",company_id:"demo-5",title:"Clarify requested model count",assigned_to:"zanna",due_date:"2026-12-03",priority:"high",completed:true}
  ];
+ app.email_messages=[{id:"sample-mail-1",company_id:"demo-1",created_by:"marie",to_email:"example@example.invalid",subject:"Follow-up after your demonstration",body:"Hello,\n\nThank you for your interest in Home View Solutions.\n\nBest regards,\nHome View Solutions",legal_basis:"review_required",basis_note:"",status:"draft",created_at:"2026-11-23T08:00:00Z"}];
+ app.emailFeatureError=null;
+ app.alerts=[{id:"sample-alert-1",title:"New customer activity",message:"Sample note added to Willowstone Homes.",company_id:"demo-1",event_kind:"activity_added",read_at:null,created_at:"2026-11-24T10:00:00Z"}];
+ app.alertSettings=null;app.alertError=null;app.settingsError=null;
  app.invites=[];app.user=null;app.workspace=null;app.role="demo";
  render();
 }
@@ -117,6 +121,7 @@ async function loadWorkspace(){
  app.workspace=wr.data;app.preview=false;el("authLayer").classList.add("hidden");
  await refresh();
  attachRealtime();
+ checkPhonePush().catch(function(){});
 }
 async function refresh(){
  if(app.preview||!app.workspace)return;
@@ -133,7 +138,20 @@ async function refresh(){
  var failure=all.find(function(x){return x.error;});if(failure)throw failure.error;
  app.companies=all[0].data||[];app.contacts=all[1].data||[];app.activities=all[2].data||[];
  app.tasks=all[3].data||[];app.members=all[4].data||[];app.invites=app.role==="admin"?(all[5].data||[]):[];
+ // The draft table is optional. Load it only when the Email drafts page is open.
+ // Do not slow down or block normal CRM login, and handle network failures gracefully.
+ if(app.view==="emails"){
+  try{
+   var mail=await app.client.from("email_messages").select("*").eq("workspace_id",wid).order("created_at",{ascending:false}).limit(200);
+   app.emailFeatureError=mail.error?mail.error.message:null;
+   app.email_messages=mail.data||[];
+  }catch(error){
+   app.emailFeatureError=error.message||"Unable to load email drafts.";
+   app.email_messages=[];
+  }
+ }
  render();
+ loadAlerts().catch(function(e){app.alertError=e.message;});
 }
 function attachRealtime(){
  if(app.channel){app.client.removeChannel(app.channel);app.channel=null;}
@@ -147,11 +165,25 @@ function attachRealtime(){
   });
  });
  app.channel=channel.subscribe();
+ if(app.alertChannel){app.client.removeChannel(app.alertChannel);app.alertChannel=null;}
+ if(app.user){
+  var personal=app.client.channel("crm-alerts-"+app.user.id);
+  personal.on("postgres_changes",{event:"*",schema:"public",table:"crm_notifications",filter:"recipient_id=eq."+app.user.id},function(payload){
+   loadAlerts().then(function(){if(payload.eventType==="INSERT"&&document.visibilityState==="visible"){notify("New CRM notification. Open Notifications to see details.");}}).catch(function(e){console.warn("CRM alert refresh:",e);});
+  });
+  app.alertChannel=personal.subscribe();
+ }
 }
-function go(view){app.view=view;app.selectedCompany=null;app.search="";app.filter="all";el("sidebar").classList.remove("open");render();window.scrollTo(0,0);}
+function go(view){
+ app.view=view;app.selectedCompany=null;app.search="";app.filter="all";
+ el("sidebar").classList.remove("open");render();window.scrollTo(0,0);
+ if(view==="emails"&&!app.preview&&app.workspace)refresh().catch(function(e){notify(e.message,true);});
+ if(view==="alerts"&&!app.preview&&app.workspace)loadAlerts().catch(function(e){notify(e.message,true);});
+ if(view==="settings"&&!app.preview&&app.workspace)loadAlertSettings().catch(function(e){notify(e.message,true);});
+}
 function openCompany(id){if(!company(id))return;app.selectedCompany=id;app.view="detail";render();window.scrollTo(0,0);}
 function navTitle(){
- var titles={dashboard:["Dashboard","An overview of your builder relationships."],companies:["Companies","Every prospect, contact and conversation in one place."],pipeline:["Sales pipeline","Move relationships forward, one step at a time."],tasks:["Follow-ups & tasks","Know exactly who needs to do what next."],settings:["Team & settings","Your shared CRM workspace."],detail:["Company details","Contacts, notes and follow-ups for this builder."]};
+ var titles={dashboard:["Dashboard","An overview of your builder relationships."],companies:["Companies","Every prospect, contact and conversation in one place."],pipeline:["Sales pipeline","Move relationships forward, one step at a time."],tasks:["Follow-ups & tasks","Know exactly who needs to do what next."],emails:["Email drafts","Prepare sales messages together. Sending is not connected yet."],alerts:["Notifications","Updates and sales activity for your account."],settings:["Team & settings","Your shared CRM workspace."],detail:["Company details","Contacts, notes and follow-ups for this builder."]};
  return titles[app.view]||titles.dashboard;
 }
 function notice(){
@@ -162,8 +194,8 @@ function render(){
  var label=navTitle();el("pageTitle").textContent=app.view==="detail"?(company(app.selectedCompany)||{}).name||"Company details":label[0];
  el("pageSubtitle").textContent=label[1];el("notice").innerHTML=notice();
  var primary=el("primaryAction");
- var act={dashboard:["+ Add company","company"],companies:["+ Add company","company"],pipeline:["+ Add company","company"],tasks:["+ Add task","task"],settings:["+ Invite teammate","invite"],detail:["+ Log activity","activity"]}[app.view]||["+ Add company","company"];
- primary.textContent=act[0];primary.dataset.modal=act[1];primary.style.display=app.view==="settings"&&app.role!=="admin"?"none":"";
+ var act={dashboard:["+ Add company","company"],companies:["+ Add company","company"],pipeline:["+ Add company","company"],tasks:["+ Add task","task"],emails:["+ New email draft","email"],alerts:["",""],settings:["+ Invite teammate","invite"],detail:["+ Log activity","activity"]}[app.view]||["+ Add company","company"];
+ primary.textContent=act[0];primary.dataset.modal=act[1];primary.style.display=(app.view==="settings"&&app.role!=="admin")||app.view==="alerts"?"none":"";
  Array.prototype.forEach.call(document.querySelectorAll("[data-nav]"),function(n){n.classList.toggle("active",n.dataset.nav===app.view||(app.view==="detail"&&n.dataset.nav==="companies"));});
  var who=app.member?(app.member.display_name||app.member.email):"Preview workspace";
  el("userName").textContent=who;el("userAvatar").textContent=app.preview?"HV":String(who).slice(0,2).toUpperCase();
@@ -172,9 +204,12 @@ function render(){
  if(app.view==="companies")el("view").innerHTML=renderCompanies();
  else if(app.view==="pipeline")el("view").innerHTML=renderPipeline();
  else if(app.view==="tasks")el("view").innerHTML=renderTasks();
+ else if(app.view==="emails")el("view").innerHTML=renderEmails();
+ else if(app.view==="alerts")el("view").innerHTML=renderAlerts();
  else if(app.view==="settings")el("view").innerHTML=renderSettings();
  else if(app.view==="detail")el("view").innerHTML=renderDetail();
  else el("view").innerHTML=renderDashboard();
+ updateAlertBadge();
 }
 function renderDashboard(){
  var count=app.companies.length,active=app.companies.filter(function(c){return c.status!=="won"&&c.status!=="lost";}).length,
@@ -245,6 +280,177 @@ function renderDetail(){
  h+='<section class="panel" style="margin-top:18px"><div class="panel-head"><div class="panel-title">Next steps</div><button class="text-action" data-modal="task" data-parent="'+encode(c.id)+'">+ Add task</button></div><div class="panel-body">'+(tasks.length?tasks.map(taskRow).join(""):'<div class="empty">No follow-ups assigned yet.</div>')+'</div></section></div></div>';
  return h;
 }
+function renderEmails(){
+ var h='<div class="banner"><div><strong>DRAFT MODE — NO EMAILS WILL BE SENT.</strong> Write and save messages here. We will connect sales@homeviewsolutions.com only after the mailbox and sending provider are verified.</div></div>';
+ if(app.emailFeatureError&&!app.preview){
+  h+='<div class="banner"><div>Email draft storage has not been installed yet. Apply the separate supabase/email-drafts.sql setup script before saving real drafts. Existing CRM features still work.</div></div>';
+ }
+ h+='<section class="panel"><div class="panel-head"><div><div class="panel-title">Team email drafts</div><div class="panel-kicker">Visible to authorized CRM members; editable only by the author</div></div><button type="button" class="text-action" data-modal="email">+ Compose</button></div><div class="panel-body">';
+ h+=app.email_messages.length?app.email_messages.map(function(m){
+  var by=memberName(m.created_by),canEdit=m.status==="draft"&&(app.preview||app.user&&app.user.id===m.created_by);
+  return '<div class="email-row"><div class="email-row-main"><div class="task-title">'+encode(m.subject)+'</div><div class="task-due">To: '+encode(m.to_email)+' · '+encode(companyName(m.company_id))+' · '+encode(by)+'</div><div class="email-preview">'+encode((m.body||"").slice(0,180))+'</div><div class="task-due">'+encode(String(m.status||"draft").toUpperCase())+' · '+encode(fmtDate(m.created_at))+'</div></div>'+(canEdit?'<button type="button" class="secondary-btn" data-edit-email="'+encode(m.id)+'">Edit draft</button>':"")+'</div>';
+ }).join(""):'<div class="empty">No email drafts yet. Click Compose to create your first one.</div>';
+ h+='</div></section>';
+ h+='<p class="hint" style="margin-top:15px">This is not an Outlook inbox. Marie’s personal mailbox stays private. Customer replies and outgoing sending require a later setup step.</p>';
+ return h;
+}
+function updateAlertBadge(){
+ var count=app.alerts.filter(function(n){return !n.read_at;}).length;
+ ["alertsCount","alertsNavCount"].forEach(function(id){
+  var item=el(id);if(!item)return;
+  item.textContent=count>99?"99+":String(count);
+  item.classList.toggle("hidden",count===0);
+ });
+ var btn=el("alertsButton");
+ if(btn)btn.setAttribute("aria-label","Notifications"+(count?" ("+count+" unread)":""));
+}
+async function loadAlerts(){
+ if(app.preview||!app.user||!app.workspace){updateAlertBadge();return;}
+ var uid=app.user.id,wid=app.workspace.id;
+ var result=await app.client.from("crm_notifications")
+  .select("id,recipient_id,event_kind,title,message,company_id,task_id,email_id,read_at,created_at")
+  .eq("workspace_id",wid).eq("recipient_id",uid)
+  .order("created_at",{ascending:false}).limit(150);
+ if(app.preview||!app.user||app.user.id!==uid||!app.workspace||app.workspace.id!==wid)return;
+ if(result.error){app.alertError=result.error.message;throw result.error;}
+ app.alerts=result.data||[];app.alertError=null;
+ updateAlertBadge();
+ if(app.view==="alerts")el("view").innerHTML=renderAlerts();
+}
+async function loadAlertSettings(){
+ if(app.preview||!app.user||!app.workspace)return;
+ var r=await app.client.from("crm_notification_settings").select("*").eq("user_id",app.user.id).eq("workspace_id",app.workspace.id).maybeSingle();
+ if(r.error){app.settingsError=r.error.message;throw r.error;}
+ app.alertSettings=r.data||null;app.settingsError=null;
+ if(app.view==="settings")el("view").innerHTML=renderSettings();
+}
+async function updateAlertSetting(name,enabled){
+ var allowed=["enabled","company_alerts","activity_alerts","task_alerts","email_alerts"];
+ if(allowed.indexOf(name)<0||app.preview||!app.user||!app.workspace)return;
+ try{
+  var data={},r;
+  data[name]=enabled;
+  if(app.alertSettings){
+   data.updated_at=new Date().toISOString();
+   r=await app.client.from("crm_notification_settings").update(data)
+    .eq("user_id",app.user.id).eq("workspace_id",app.workspace.id);
+  }else{
+   r=await app.client.from("crm_notification_settings").insert(Object.assign({
+    user_id:app.user.id,workspace_id:app.workspace.id
+   },data));
+  }
+  if(r.error)throw r.error;
+  app.alertSettings=Object.assign({
+   enabled:true,company_alerts:true,activity_alerts:true,task_alerts:true,email_alerts:true
+  },app.alertSettings||{},data);
+  notify("Notification preference saved.");
+  if(app.view==="settings")el("view").innerHTML=renderSettings();
+ }catch(err){
+  notify(err.message||"Unable to save notification preference.",true);
+  await loadAlertSettings().catch(function(){});
+ }
+}
+function renderAlerts(){
+ var count=app.alerts.filter(function(n){return !n.read_at;}).length;
+ var h='<div class="alert-heading"><div><div class="section-title">Your notifications</div><div class="hint">'+count+' unread update'+(count===1?"":"s")+'</div></div>';
+ if(count)h+='<button type="button" class="secondary-btn" data-action="markAllAlertsRead">Mark all read</button>';
+ h+='</div>';
+ if(app.alertError)h+='<div class="banner"><div>Unable to load your notifications: '+encode(app.alertError)+'</div></div>';
+ h+='<section class="panel"><div class="panel-body alert-list">';
+ if(!app.alerts.length)h+='<div class="empty">No notifications yet. New customer notes, lead updates, tasks and email drafts will appear here.</div>';
+ else h+=app.alerts.map(function(n){
+  var when=n.created_at?new Date(n.created_at).toLocaleString("en-CA",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"";
+  return '<div class="alert-item'+(!n.read_at?' alert-unread':'')+'">'
+   +'<div class="alert-content"><div class="task-title">'+encode(n.title)+'</div><div class="info-text">'+encode(n.message)+'</div><div class="task-due">'+encode(when)+' · '+(n.read_at?'Read':'New')+'</div></div>'
+   +'<div class="alert-actions"><button type="button" class="secondary-btn" data-open-alert="'+encode(n.id)+'">Open</button>'
+   +(!n.read_at?'<button type="button" class="text-action" data-read-alert="'+encode(n.id)+'">Mark read</button>':'')
+   +'</div></div>';
+ }).join("");
+ h+='</div></section>';
+ h+='<p class="hint" style="margin-top:14px">Notifications are visible only to your authorized account. Phone push alerts require a separate device permission and background delivery setup.</p>';
+ return h;
+}
+async function markAlertRead(id){
+ var record=app.alerts.find(function(n){return String(n.id)===String(id);});
+ if(!record||record.read_at)return;
+ if(app.preview){
+  record.read_at=new Date().toISOString();render();return;
+ }
+ var r=await app.client.from("crm_notifications").update({read_at:new Date().toISOString()})
+  .eq("id",id).eq("recipient_id",app.user.id);
+ if(r.error)throw r.error;
+ await loadAlerts();
+}
+async function markAllAlertsRead(){
+ if(app.preview){app.alerts.forEach(function(n){n.read_at=n.read_at||new Date().toISOString();});render();return;}
+ var r=await app.client.from("crm_notifications").update({read_at:new Date().toISOString()})
+  .eq("recipient_id",app.user.id).eq("workspace_id",app.workspace.id).is("read_at",null);
+ if(r.error)throw r.error;
+ await loadAlerts();
+}
+async function openAlert(id){
+ var n=app.alerts.find(function(x){return String(x.id)===String(id);});if(!n)return;
+ try{await markAlertRead(id);}catch(e){notify(e.message,true);}
+ if(n.company_id&&company(n.company_id)){openCompany(n.company_id);return;}
+ if(n.email_id){go("emails");return;}
+ if(n.task_id){go("tasks");return;}
+ go("dashboard");
+}
+function decodeVapidKey(value){
+ var b64=value.replace(/-/g,"+").replace(/_/g,"/");
+ return Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length/4)*4,"=")),function(c){return c.charCodeAt(0);});
+}
+function phonePushConfigured(){
+ return !!(window.HVS_CONFIG&&window.HVS_CONFIG.webPushPublicKey);
+}
+async function enablePhonePush(){
+ if(!app.user||app.preview||!app.workspace)throw Error("Sign in before enabling phone alerts.");
+ if(!phonePushConfigured())throw Error("The server push setup is not completed yet.");
+ if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window))
+  throw Error("Web Push is unsupported here. On iPhone, install the CRM to the Home Screen first.");
+ if(Notification.permission==="denied")throw Error("Notifications are blocked in device settings.");
+ var reg=await navigator.serviceWorker.register("./crm-sw.js",{scope:"./"});
+ var permission=await Notification.requestPermission();
+ if(permission!=="granted")throw Error("Notification permission was not granted.");
+ var sub=await reg.pushManager.getSubscription();
+ if(!sub)sub=await reg.pushManager.subscribe({
+  userVisibleOnly:true,
+  applicationServerKey:decodeVapidKey(window.HVS_CONFIG.webPushPublicKey)
+ });
+ var info=sub.toJSON();
+ var result=await app.client.from("crm_push_subscriptions").upsert({
+  user_id:app.user.id,workspace_id:app.workspace.id,endpoint:info.endpoint,
+  p256dh:info.keys&&info.keys.p256dh||null,auth:info.keys&&info.keys.auth||null,
+  device_label:navigator.userAgent.slice(0,200),updated_at:new Date().toISOString()
+ },{onConflict:"endpoint"});
+ if(result.error)throw result.error;
+ app.phonePushEnabled=true;
+ notify("This device is registered. Confirm delivery after server activation.");
+ if(app.view==="settings")el("view").innerHTML=renderSettings();
+}
+async function disablePhonePush(){
+ if(!("serviceWorker" in navigator))return;
+ var reg=await navigator.serviceWorker.getRegistration("./");
+ var sub=reg&&await reg.pushManager.getSubscription();
+ if(!sub)return;
+ if(app.user&&!app.preview){
+  var result=await app.client.from("crm_push_subscriptions").delete()
+   .eq("user_id",app.user.id).eq("endpoint",sub.endpoint);
+  if(result.error)throw result.error;
+ }
+ await sub.unsubscribe();
+ app.phonePushEnabled=false;
+ notify("Phone alerts disabled on this device.");
+ if(app.view==="settings")el("view").innerHTML=renderSettings();
+}
+async function checkPhonePush(){
+ if(!phonePushConfigured()||!("serviceWorker" in navigator))return;
+ try{
+  var reg=await navigator.serviceWorker.getRegistration("./");
+  app.phonePushEnabled=!!(reg&&await reg.pushManager.getSubscription());
+  if(app.view==="settings")el("view").innerHTML=renderSettings();
+ }catch(e){console.warn("Push registration state:",e);}
+}
 function renderSettings(){
  if(app.preview)return '<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Connect your database</div></div><div class="panel-body"><p class="hint">This is a safe, fictional preview. To share real client information between Marie and Zanna, connect a Supabase project and install the database schema from this repository.</p><button class="primary-btn" data-action="connect">Set up secure database</button></div></section></div>';
  var h='<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Workspace</div></div><div class="panel-body"><div class="field-key">Name</div><div class="company-name">'+encode(app.workspace.name)+'</div><div class="hint">Every member below shares one protected set of companies, contacts, notes and tasks.</div></div></section>';
@@ -255,7 +461,26 @@ function renderSettings(){
   h+=(app.invites.length?app.invites.map(function(i){return '<div class="contact-row"><div class="activity-details"><div class="task-title">'+encode(i.email)+'</div><div class="task-due">'+(i.accepted_at?"Joined":"Waiting for sign-up")+'</div></div></div>';}).join(""):'<div class="hint">No invitations yet.</div>');
   h+='<p class="hint">Inviting someone authorizes their matching, verified email address. Ask them to open this CRM and create an account using that same email. The CRM does not automatically email invitations.</p>';
  }
- h+='</div></section><section class="panel"><div class="panel-head"><div class="panel-title">Privacy & setup</div></div><div class="panel-body"><p class="hint">All customer records live in Supabase and are protected by workspace membership policies. This public GitHub Pages site contains frontend code only. Never place a service-role key or client export in GitHub.</p></div></section></div>';
+ h+='</div></section>';
+ var alertSwitches=[
+  ["enabled","All CRM alerts"],["company_alerts","New leads and company updates"],
+  ["activity_alerts","Calls, notes and customer activity"],["task_alerts","Newly assigned tasks"],
+  ["email_alerts","New email drafts and email activity"]
+ ];
+ h+='<section class="panel"><div class="panel-head"><div><div class="panel-title">Notification preferences</div><div class="panel-kicker">Choose the alerts you receive</div></div></div><div class="panel-body">';
+ if(app.settingsError)h+='<p class="hint">Settings could not load: '+encode(app.settingsError)+'</p>';
+ h+=alertSwitches.map(function(k){
+  var checked=!app.alertSettings||app.alertSettings[k[0]]!==false;
+  return '<label class="alert-preference"><input type="checkbox" data-alert-setting="'+encode(k[0])+'" '+(checked?'checked':'')+'><span>'+encode(k[1])+'</span></label>';
+ }).join("");
+ h+='<div class="push-setup"><div class="task-title">Phone notifications</div><p class="hint">To receive alerts with the CRM closed, open the installed Home Screen app on iPhone or an eligible desktop browser and enable notifications.</p>';
+ if(phonePushConfigured()){
+  h+='<button class="secondary-btn" type="button" data-action="'+(app.phonePushEnabled?'disablePhonePush':'enablePhonePush')+'">'+(app.phonePushEnabled?'Disable on this device':'Enable on this device')+'</button>';
+ }else{
+  h+='<p class="hint"><strong>Phone push awaits the final server connection.</strong> In-app alerts work without it.</p>';
+ }
+ h+='</div></div></section>';
+ h+='<section class="panel"><div class="panel-head"><div class="panel-title">Privacy & setup</div></div><div class="panel-body"><p class="hint">All customer records live in Supabase and are protected by workspace membership policies. This public GitHub Pages site contains frontend code only. Never place a service-role key or client export in GitHub.</p></div></section></div>';
  return h;
 }
 function input(name,label,v,type,required,full,extra){
@@ -292,6 +517,22 @@ function openModal(kind,record,parent){
   input("due_date","Due date",r.due_date||isoToday(),"date",false,false)+
   select("assigned_to","Assigned to",memberOptions(),r.assigned_to||(app.user?app.user.id:"marie"))+
   select("priority","Priority",[["normal","Normal"],["high","High"]],r.priority||"normal");
+ }else if(kind==="email"){
+  title=r.id?"Edit email draft":"Compose email draft";
+  var suggested=app.contacts.find(function(c){return c.company_id===cid&&c.email;});
+  body=input("to_email","Customer email",r.to_email||(suggested?suggested.email:""),"email",true,true)+
+    input("subject","Subject",r.subject,"text",true,true,'maxlength="250"')+
+    select("company_id","Related company",companyOptions(),r.company_id||cid,true)+
+    area("body","Message (draft only)",r.body)+
+    select("legal_basis","Email permission / exemption to review",[
+      ["review_required","Not yet checked"],
+      ["customer_request","Customer requested follow-up"],
+      ["express_consent","Express consent"],
+      ["implied_consent","Implied consent"],
+      ["b2b_exemption","Potential B2B exemption — verify"]
+    ],r.legal_basis||"review_required",true)+
+    area("basis_note","Notes on permission or relationship (optional)",r.basis_note||"")+
+    '<div class="hint" style="grid-column:1/-1">Only saves a draft. Nothing will be sent. Before sending sales emails, verify applicable Canadian anti-spam requirements and your email provider\'s rules.</div>';
  }else if(kind==="invite"){
   title="Invite teammate";body=input("email","Teammate's email",r.email,"email",true,true)+
   '<div class="hint" style="grid-column:1/-1">This grants access after that person signs up with the exact same verified email. No email message will be sent automatically.</div>';
@@ -303,7 +544,7 @@ function openModal(kind,record,parent){
  }else return;
  app.modal={kind:kind,id:r.id||null,parent:cid};
  el("modalTitle").textContent=title;
- el("modalForm").innerHTML='<div class="form-grid">'+body+'</div><div class="form-actions"><button class="secondary-btn" type="button" data-action="closeModal">Cancel</button><button class="primary-btn" type="submit">'+(kind==="connect"?"Save connection":kind==="invite"?"Invite":r.id?"Save changes":"Save")+'</button></div>';
+ el("modalForm").innerHTML='<div class="form-grid">'+body+'</div><div class="form-actions"><button class="secondary-btn" type="button" data-action="closeModal">Cancel</button><button class="primary-btn" type="submit">'+(kind==="connect"?"Save connection":kind==="invite"?"Invite":kind==="email"?"Save draft":r.id?"Save changes":"Save")+'</button></div>';
  el("modalBackdrop").classList.remove("hidden");
  var first=el("modalForm").querySelector("input,select,textarea");if(first)first.focus();
 }
@@ -347,6 +588,15 @@ async function saveModal(event){
    d.company_id=d.company_id||null;d.assigned_to=d.assigned_to||null;d.due_date=d.due_date||null;
    if(!m.id){d.completed=false;d.created_by=app.preview?"marie":app.user.id;}
    await saveRow("tasks",d,m.id);
+   }else if(kind==="email"){
+   d.to_email=(d.to_email||"").trim().toLowerCase();d.subject=(d.subject||"").trim();d.body=(d.body||"").trim();
+   d.basis_note=(d.basis_note||"").trim();d.company_id=d.company_id||null;
+   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.to_email))throw new Error("Enter a valid customer email.");
+   if(!d.subject||!d.body)throw new Error("Add a subject and message.");
+   if(m.id&&!app.email_messages.some(function(x){return String(x.id)===String(m.id)&&x.status==="draft";}))throw new Error("Only drafts can be edited.");
+   d.updated_at=new Date().toISOString();
+   if(!m.id){d.created_by=app.preview?"marie":app.user.id;d.status="draft";}
+   await saveRow("email_messages",d,m.id);
   }else if(kind==="invite"){
    if(app.preview)throw new Error("Connect Supabase to invite teammates.");
    if(app.role!=="admin")throw new Error("Only a workspace admin can invite new members.");
@@ -422,7 +672,12 @@ async function authSubmit(e){
  }catch(err){showAuth(mode,err.message||"Please try again.");}
  finally{button.disabled=false;}
 }
-async function signout(){if(app.client){await app.client.auth.signOut();}app.user=null;app.member=null;app.workspace=null;app.role="";demo();render();showAuth("signin");}
+async function signout(){
+ if(app.client){
+  if(app.channel){app.client.removeChannel(app.channel);app.channel=null;}
+  if(app.alertChannel){app.client.removeChannel(app.alertChannel);app.alertChannel=null;}
+  await app.client.auth.signOut();
+ }app.user=null;app.member=null;app.workspace=null;app.role="";demo();render();showAuth("signin");}
 function delegateClick(e){
  var nav=e.target.closest("[data-nav]");if(nav){go(nav.dataset.nav);return;}
  var act=e.target.closest("[data-action]");
@@ -431,6 +686,9 @@ function delegateClick(e){
   if(action==="connect")openModal("connect");
   else if(action==="viewTasks")go("tasks");
   else if(action==="viewCompanies"||action==="back")go("companies");
+   else if(action==="markAllAlertsRead")markAllAlertsRead().catch(function(e){notify(e.message,true);});
+   else if(action==="enablePhonePush")enablePhonePush().catch(function(e){notify(e.message,true);});
+   else if(action==="disablePhonePush")disablePhonePush().catch(function(e){notify(e.message,true);});
   else if(action==="closeModal")closeModal();
   return;
  }
@@ -440,6 +698,16 @@ function delegateClick(e){
   if(id&&kind==="company")record=company(id);
   openModal(kind,record,modal.dataset.parent);return;
  }
+ var openAlertItem=e.target.closest("[data-open-alert]");
+ if(openAlertItem){openAlert(openAlertItem.dataset.openAlert).catch(function(err){notify(err.message,true);});return;}
+ var markAlert=e.target.closest("[data-read-alert]");
+ if(markAlert){markAlertRead(markAlert.dataset.readAlert).catch(function(err){notify(err.message,true);});return;}
+ var editEmail=e.target.closest("[data-edit-email]");
+ if(editEmail){
+  var msg=app.email_messages.find(function(x){return String(x.id)===String(editEmail.dataset.editEmail);});
+  if(msg&&msg.status==="draft")openModal("email",msg,null);
+  return;
+ }
  var editTask=e.target.closest("[data-edit-task]");
  if(editTask){openModal("task",app.tasks.find(function(x){return String(x.id)===String(editTask.dataset.editTask);}),null);return;}
  var editContact=e.target.closest("[data-edit-contact]");
@@ -447,6 +715,8 @@ function delegateClick(e){
  var item=e.target.closest("[data-open-company]");if(item){openCompany(item.dataset.openCompany);}
 }
 function delegateChange(e){
+ var alertSetting=e.target.closest("[data-alert-setting]");
+ if(alertSetting){updateAlertSetting(alertSetting.dataset.alertSetting,alertSetting.checked);return;}
  var check=e.target.closest("[data-task-check]");if(check){toggleTask(check.dataset.taskCheck,check.checked);return;}
  var filter=e.target.closest("[data-filter]");
  if(filter){
@@ -469,6 +739,7 @@ function setupListeners(){
  el("closeModal").addEventListener("click",closeModal);
  el("modalForm").addEventListener("submit",saveModal);
  el("primaryAction").addEventListener("click",function(){openModal(this.dataset.modal);});
+ el("alertsButton").addEventListener("click",function(){go("alerts");});
  el("mobileMenu").addEventListener("click",function(){el("sidebar").classList.toggle("open");});
  el("logoutBtn").addEventListener("click",signout);
  el("authLayer").addEventListener("submit",function(e){if(e.target.matches("#authForm,#workspaceForm"))authSubmit(e);});

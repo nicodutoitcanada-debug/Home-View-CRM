@@ -58,3 +58,47 @@ The GitHub repository and its assets may be **public**. Never commit customer re
 ## Safely testing real data
 
 Log in as administrator and create a fake test company. Sign in as an invited teammate using a different browser and confirm the same company appears. Test a note and a completed task. To test workspace isolation, register a separate account without an invitation, create its own workspace, and confirm the first workspace's records are unavailable. Avoid entering real client information until these checks pass.
+
+## Email drafts — available in CRM, sending intentionally disabled (2026-11-24)
+
+The CRM includes a **draft-only** email composer for sales representatives without Microsoft 365 accounts. It **cannot send email** until a verified outbound provider is configured.
+
+- Adds `Email drafts` navigation, compose/edit modal, customer email, subject, body, related company and legal-basis notes.
+- Drafts are visible to CRM workspace members, while only their author can edit a draft.
+- Supabase storage **installed on 2026-11-23** in the existing **Home View CRM** project. The file `supabase/email-drafts.sql` is retained as the deployment record. **Do not re-run it** in that project.
+- The SQL creates only the new `email_messages` table with row-level security; it does not modify existing CRM tables.
+- The frontend treats a missing `email_messages` table as optional and keeps existing CRM pages functional.
+- Sender credentials must **never** go into GitHub, `config.js`, browser storage or the client code.
+- Sending/replies are **not implemented**. A later server-side send function needs sender verification, provider selection appropriate to the message type, strict auth/workspace checks, send audit log, rate limiting and CASL compliance controls.
+- `sales@homeviewsolutions.com` is not created by this code. Marie's mailbox remains separate. Incoming replies will not appear in the CRM until a later inbound integration.
+- Do not send prospecting emails through a transactional-only API. Distinguish requested customer responses from commercial outreach, and verify consent or an applicable exemption under CASL as well as provider policy.
+
+**Release sequence:** Review draft PR, test with two CRM accounts (including unauthorized access), verify sending service and reply routing, then merge with a separate explicit go-live step. RLS and grants were checked after applying SQL; interactive user isolation tests remain.
+
+## CRM notifications and safe rollout (2026-11-24)
+
+### Data preservation
+Before changes, an additive private backup was created **inside Supabase** in schema `crm_backup_20261124`, containing the original CRM workspaces, membership, invitations, companies (including description notes), contacts, activities, tasks and email drafts. It is not exposed through the Data API. The original live tables were not deleted, recreated or overwritten. Company-description fingerprints and entity counts matched between live and backup after the notification migrations.
+
+### In-app alerts
+- A bell button and Notifications page display personal unread/read alerts.
+- Private `crm_notifications` rows are created by protected database triggers for new companies, company status/assignment changes, edits to company notes, new activity notes/calls/meetings, new task assignments and new sales email drafts.
+- Each authorized team member can see **only their own** alerts, mark them read and configure preferences for lead updates, activity, tasks and email.
+- Inactive/revoked workspace members cannot query alerts due to membership-restricted Row Level Security.
+- `crm_notification_settings` stores per-account alert preferences.
+- Alert events are realtime while the CRM is open, and refresh when the app regains focus.
+- Incoming `sales@` email notifications, scheduled due-date reminders and automatic handoff after email send **are not yet active** because outbound/inbound email integration is not connected.
+
+### Background phone push — prepared, not yet activated
+- `crm-sw.js` is a minimal service worker; it **does not cache app assets**.
+- `crm_push_subscriptions` is private per user for storing opt-in device subscriptions.
+- `supabase/functions/crm-web-push/index.ts` is deployed with authentication via the Supabase webhook service key; it cannot send without VAPID configuration.
+- Configure Edge Function Secrets `HVS_CRM_VAPID_PUBLIC` and `HVS_CRM_VAPID_PRIVATE`. Never paste private keys into GitHub or browser JS.
+- Put only the matching **public** VAPID key in `config.js` under `webPushPublicKey`.
+- In Supabase Dashboard create a Database Webhook on `public.crm_notifications`, **INSERT only**, pointing to the `crm-web-push` Edge Function. Enable the built-in **auth header with service key** so anonymous callers cannot dispatch alerts.
+- Test with a consenting CRM teammate on an iPhone after adding the CRM to the Home Screen; each user must explicitly allow notifications from inside the app.
+- The service will show a **generic** phone lock-screen message, with personal details viewable only in the signed-in CRM.
+- Email and push provider costs/quotas are separate from the CRM itself. Do not assume all sending will be free at higher volume.
+
+### Rollout notes
+The CRM website files can be updated independently of Supabase customer records. Retain the private backup and test live login, note saves and alert display with Marie and Zanna. If a UI regression appears, revert the GitHub commit; **do not reset the database**. Real device testing is necessary to confirm push delivery after the remaining setup.
