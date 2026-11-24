@@ -546,7 +546,10 @@ function openModal(kind,record,parent){
  el("modalTitle").textContent=title;
  el("modalForm").innerHTML='<div class="form-grid">'+body+'</div><div class="form-actions"><button class="secondary-btn" type="button" data-action="closeModal">Cancel</button><button class="primary-btn" type="submit">'+(kind==="connect"?"Save connection":kind==="invite"?"Invite":kind==="email"?"Save draft":r.id?"Save changes":"Save")+'</button></div>';
  el("modalBackdrop").classList.remove("hidden");
- var first=el("modalForm").querySelector("input,select,textarea");if(first)first.focus();
+ // iOS zooms the entire page when a small input receives focus automatically.
+ // Let mobile users choose their field; only pre-focus on desktop pointers.
+ var first=el("modalForm").querySelector("input,select,textarea");
+ if(first&&window.matchMedia&&window.matchMedia("(min-width: 701px) and (pointer: fine)").matches)first.focus();
 }
 function closeModal(){el("modalBackdrop").classList.add("hidden");app.modal=null;}
 async function saveRow(table,values,id){
