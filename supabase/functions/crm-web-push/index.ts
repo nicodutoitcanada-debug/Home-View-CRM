@@ -1,5 +1,5 @@
 // HVS CRM web-push delivery (empty payload, no customer data on lock screens).
-// Requires dashboard secrets HVS_CRM_WEBPUSH_TOKEN, HVS_CRM_VAPID_PRIVATE, HVS_CRM_VAPID_PUBLIC.
+// Requires dashboard secrets HVS_CRM_VAPID_PRIVATE and HVS_CRM_VAPID_PUBLIC.
 // Connect via an authenticated Supabase database webhook on crm_notifications INSERT.
 // NEVER put VAPID private material into GitHub or the browser.
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -44,12 +44,17 @@ function approvedPushHost(endpoint:string):boolean{
 }
 Deno.serve(async req=>{
  if(req.method!=="POST")return new Response("Method not allowed",{status:405});
- const hook=Deno.env.get("HVS_CRM_WEBPUSH_TOKEN");
  const priv=Deno.env.get("HVS_CRM_VAPID_PRIVATE");
  const pub=Deno.env.get("HVS_CRM_VAPID_PUBLIC");
- if(!hook||!priv||!pub)return new Response("Web Push not configured",{status:503});
- const provided=req.headers.get("x-crm-webpush-token");
- if(!provided||provided!==hook)return new Response("Forbidden",{status:403});
+ if(!priv||!pub)return new Response("Web Push not configured",{status:503});
+ const secretKeys=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}");
+ const adminKey=secretKeys.default||Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+ const url=Deno.env.get("SUPABASE_URL");
+ if(!adminKey||!url)return new Response("Missing backend service credentials",{status:503});
+ // Only a Supabase Database Webhook bearing the project's secret service key may invoke.
+ const supplied=req.headers.get("apikey")||
+  (req.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
+ if(!supplied||supplied!==adminKey)return new Response("Forbidden",{status:403});
  let incoming:Record<string,unknown>;
  try{incoming=await req.json();}catch{return new Response("Malformed request",{status:400});}
  // Supabase DB webhooks wrap row details in "record"; support a simple ID body as well.
@@ -57,10 +62,6 @@ Deno.serve(async req=>{
  const id=record.id||record.notification_id;
  if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(id))
   return new Response("Invalid alert ID",{status:400});
- const secretKeys=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}");
- const adminKey=secretKeys.default||Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
- const url=Deno.env.get("SUPABASE_URL");
- if(!adminKey||!url)return new Response("Missing backend service credentials",{status:503});
  const admin=createClient(url,adminKey,{auth:{autoRefreshToken:false,persistSession:false}});
  const alertRes=await admin.from("crm_notifications")
   .select("id,workspace_id,recipient_id").eq("id",id).maybeSingle();
