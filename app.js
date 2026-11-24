@@ -16,7 +16,7 @@ var STAGES=[
 var priorities=["hot","warm","cold"];
 var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:"dashboard",selectedCompany:null,
   companies:[],contacts:[],activities:[],tasks:[],email_messages:[],emailFeatureError:null,members:[],invites:[],search:"",filter:"all",taskFilter:"open",
-  modal:null,busy:false,channel:null,alertChannel:null,alerts:[],alertSettings:null,alertError:null,settingsError:null,recoveryMode:false};
+  modal:null,busy:false,channel:null,alertChannel:null,alerts:[],alertSettings:null,alertError:null,settingsError:null,phonePushEnabled:false,recoveryMode:false};
 var el=function(id){return document.getElementById(id);};
 var encode=function(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");};
 var fmtDate=function(s){if(!s)return "Not scheduled";var d=new Date(String(s).slice(0,10)+"T12:00:00");return isNaN(d.getTime())?"—":d.toLocaleDateString("en-CA",{month:"short",day:"numeric",year:"numeric"});};
@@ -121,6 +121,7 @@ async function loadWorkspace(){
  app.workspace=wr.data;app.preview=false;el("authLayer").classList.add("hidden");
  await refresh();
  attachRealtime();
+ checkPhonePush().catch(function(){});
 }
 async function refresh(){
  if(app.preview||!app.workspace)return;
@@ -395,6 +396,61 @@ async function openAlert(id){
  if(n.task_id){go("tasks");return;}
  go("dashboard");
 }
+function decodeVapidKey(value){
+ var b64=value.replace(/-/g,"+").replace(/_/g,"/");
+ return Uint8Array.from(atob(b64.padEnd(Math.ceil(b64.length/4)*4,"=")),function(c){return c.charCodeAt(0);});
+}
+function phonePushConfigured(){
+ return !!(window.HVS_CONFIG&&window.HVS_CONFIG.webPushPublicKey);
+}
+async function enablePhonePush(){
+ if(!app.user||app.preview||!app.workspace)throw Error("Sign in before enabling phone alerts.");
+ if(!phonePushConfigured())throw Error("The server push setup is not completed yet.");
+ if(!("serviceWorker" in navigator)||!("PushManager" in window)||!("Notification" in window))
+  throw Error("Web Push is unsupported here. On iPhone, install the CRM to the Home Screen first.");
+ if(Notification.permission==="denied")throw Error("Notifications are blocked in device settings.");
+ var reg=await navigator.serviceWorker.register("./crm-sw.js",{scope:"./"});
+ var permission=await Notification.requestPermission();
+ if(permission!=="granted")throw Error("Notification permission was not granted.");
+ var sub=await reg.pushManager.getSubscription();
+ if(!sub)sub=await reg.pushManager.subscribe({
+  userVisibleOnly:true,
+  applicationServerKey:decodeVapidKey(window.HVS_CONFIG.webPushPublicKey)
+ });
+ var info=sub.toJSON();
+ var result=await app.client.from("crm_push_subscriptions").upsert({
+  user_id:app.user.id,workspace_id:app.workspace.id,endpoint:info.endpoint,
+  p256dh:info.keys&&info.keys.p256dh||null,auth:info.keys&&info.keys.auth||null,
+  device_label:navigator.userAgent.slice(0,200),updated_at:new Date().toISOString()
+ },{onConflict:"endpoint"});
+ if(result.error)throw result.error;
+ app.phonePushEnabled=true;
+ notify("This device is registered. Confirm delivery after server activation.");
+ if(app.view==="settings")el("view").innerHTML=renderSettings();
+}
+async function disablePhonePush(){
+ if(!("serviceWorker" in navigator))return;
+ var reg=await navigator.serviceWorker.getRegistration("./");
+ var sub=reg&&await reg.pushManager.getSubscription();
+ if(!sub)return;
+ if(app.user&&!app.preview){
+  var result=await app.client.from("crm_push_subscriptions").delete()
+   .eq("user_id",app.user.id).eq("endpoint",sub.endpoint);
+  if(result.error)throw result.error;
+ }
+ await sub.unsubscribe();
+ app.phonePushEnabled=false;
+ notify("Phone alerts disabled on this device.");
+ if(app.view==="settings")el("view").innerHTML=renderSettings();
+}
+async function checkPhonePush(){
+ if(!phonePushConfigured()||!("serviceWorker" in navigator))return;
+ try{
+  var reg=await navigator.serviceWorker.getRegistration("./");
+  app.phonePushEnabled=!!(reg&&await reg.pushManager.getSubscription());
+  if(app.view==="settings")el("view").innerHTML=renderSettings();
+ }catch(e){console.warn("Push registration state:",e);}
+}
 function renderSettings(){
  if(app.preview)return '<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Connect your database</div></div><div class="panel-body"><p class="hint">This is a safe, fictional preview. To share real client information between Marie and Zanna, connect a Supabase project and install the database schema from this repository.</p><button class="primary-btn" data-action="connect">Set up secure database</button></div></section></div>';
  var h='<div class="settings-stack"><section class="panel"><div class="panel-head"><div class="panel-title">Workspace</div></div><div class="panel-body"><div class="field-key">Name</div><div class="company-name">'+encode(app.workspace.name)+'</div><div class="hint">Every member below shares one protected set of companies, contacts, notes and tasks.</div></div></section>';
@@ -417,7 +473,13 @@ function renderSettings(){
   var checked=!app.alertSettings||app.alertSettings[k[0]]!==false;
   return '<label class="alert-preference"><input type="checkbox" data-alert-setting="'+encode(k[0])+'" '+(checked?'checked':'')+'><span>'+encode(k[1])+'</span></label>';
  }).join("");
- h+='<p class="hint" style="margin-top:14px">In-app notifications are available now. Background push to a closed phone app needs the final web-push delivery setup, followed by permission on each device.</p></div></section>';
+ h+='<div class="push-setup"><div class="task-title">Phone notifications</div><p class="hint">To receive alerts with the CRM closed, open the installed Home Screen app on iPhone or an eligible desktop browser and enable notifications.</p>';
+ if(phonePushConfigured()){
+  h+='<button class="secondary-btn" type="button" data-action="'+(app.phonePushEnabled?'disablePhonePush':'enablePhonePush')+'">'+(app.phonePushEnabled?'Disable on this device':'Enable on this device')+'</button>';
+ }else{
+  h+='<p class="hint"><strong>Phone push awaits the final server connection.</strong> In-app alerts work without it.</p>';
+ }
+ h+='</div></div></section>';
  h+='<section class="panel"><div class="panel-head"><div class="panel-title">Privacy & setup</div></div><div class="panel-body"><p class="hint">All customer records live in Supabase and are protected by workspace membership policies. This public GitHub Pages site contains frontend code only. Never place a service-role key or client export in GitHub.</p></div></section></div>';
  return h;
 }
@@ -625,6 +687,8 @@ function delegateClick(e){
   else if(action==="viewTasks")go("tasks");
   else if(action==="viewCompanies"||action==="back")go("companies");
    else if(action==="markAllAlertsRead")markAllAlertsRead().catch(function(e){notify(e.message,true);});
+   else if(action==="enablePhonePush")enablePhonePush().catch(function(e){notify(e.message,true);});
+   else if(action==="disablePhonePush")disablePhonePush().catch(function(e){notify(e.message,true);});
   else if(action==="closeModal")closeModal();
   return;
  }
