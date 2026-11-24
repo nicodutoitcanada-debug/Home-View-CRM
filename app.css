@@ -87,3 +87,84 @@
   .alert-bell-svg{width:32px;height:32px}
   .alert-bell .alert-pill{top:-1px;right:-2px}
 }
+
+/* 2026-11-24 iPhone layout/zoom correction.
+   Keep pinch-to-zoom available for accessibility, but prevent automatic Safari
+   input-focus magnification and sideways page growth. */
+html{
+  width:100%;
+  max-width:100%;
+  -webkit-text-size-adjust:100%;
+  text-size-adjust:100%;
+}
+body{
+  width:100%;
+  max-width:100%;
+  overflow-x:clip;
+}
+.app,.workspace,#view{min-width:0;max-width:100%}
+.topbar .heading{min-width:0}
+.table-wrap,.board{max-width:100%}
+@media (max-width:700px){
+  .app{width:100%;min-height:100dvh}
+  .mobile-head{
+    width:100%;
+    min-width:0;
+    gap:10px;
+    padding-left:max(15px,env(safe-area-inset-left));
+    padding-right:max(15px,env(safe-area-inset-right));
+  }
+  .mobile-brand-logo{min-width:0;max-width:min(35vw,140px)}
+  .workspace{
+    width:100%;
+    min-width:0;
+    padding:20px max(14px,env(safe-area-inset-left)) 55px max(14px,env(safe-area-inset-right));
+  }
+  .topbar{flex-wrap:wrap;align-items:flex-start;gap:12px}
+  .topbar .heading{flex:1 1 190px;min-width:0;overflow-wrap:anywhere}
+  .topbar-actions{flex:0 0 auto;margin-left:auto;gap:7px}
+  .topbar .primary-btn{
+    max-width:min(158px,42vw);white-space:normal;
+    font-size:12px;line-height:1.25;padding:10px 11px;
+  }
+  .eyebrow{font-size:10px;letter-spacing:1.1px}
+  .heading h1{font-size:clamp(22px,6vw,27px)}
+  .subheading{font-size:12px;line-height:1.5}
+  .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .metric,.panel,.field,.contact-row,.activity-row{min-width:0}
+  .panel-head{flex-wrap:wrap}
+  .detail-top{flex-wrap:wrap}
+  .field-list{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .toolbar{min-width:0}
+  .search{min-width:0;max-width:100%}
+  .modal-backdrop,.auth-layer{
+    width:100%;
+    max-width:100%;
+    padding:12px;
+    padding-top:max(12px,env(safe-area-inset-top));
+    padding-bottom:max(12px,env(safe-area-inset-bottom));
+    align-items:center;
+  }
+  .modal-card,.auth-card{
+    width:100%;
+    max-width:calc(100vw - 24px);
+    max-height:calc(100dvh - 24px);
+    min-width:0;
+    overscroll-behavior:contain;
+  }
+  .form-grid{grid-template-columns:minmax(0,1fr)}
+  .form-actions{flex-wrap:wrap}
+  /* iOS Safari / Chrome auto-zoom form controls below 16 CSS pixels. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,textarea,.search,.filter-select,
+  .field input,.field select,.field textarea,
+  .auth-form input,.auth-form select,.auth-form textarea{
+    font-size:16px!important;
+    line-height:1.35;
+  }
+}
+@media (max-width:400px){
+  .topbar .heading{flex-basis:100%}
+  .topbar-actions{width:100%;justify-content:space-between}
+  .field-list{grid-template-columns:minmax(0,1fr)}
+}
