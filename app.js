@@ -14,7 +14,7 @@ var STAGES=[
   {id:"lost",name:"Lost"}
 ];
 var priorities=["hot","warm","cold"];
-var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:"dashboard",selectedCompany:null,
+var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:new URLSearchParams(window.location.search).has("alerts")?"alerts":"dashboard",selectedCompany:null,
   companies:[],contacts:[],activities:[],tasks:[],email_messages:[],emailFeatureError:null,members:[],invites:[],search:"",filter:"all",taskFilter:"open",
   modal:null,busy:false,channel:null,alertChannel:null,alerts:[],alertSettings:null,alertError:null,settingsError:null,phonePushEnabled:false,recoveryMode:false};
 var el=function(id){return document.getElementById(id);};
