@@ -16,7 +16,7 @@ var STAGES=[
 var priorities=["hot","warm","cold"];
 var app={preview:true,user:null,client:null,workspace:null,member:null,role:"",view:"dashboard",selectedCompany:null,
   companies:[],contacts:[],activities:[],tasks:[],email_messages:[],emailFeatureError:null,members:[],invites:[],search:"",filter:"all",taskFilter:"open",
-  modal:null,busy:false,channel:null,recoveryMode:false};
+  modal:null,busy:false,channel:null,alertChannel:null,alerts:[],alertSettings:null,alertError:null,settingsError:null,recoveryMode:false};
 var el=function(id){return document.getElementById(id);};
 var encode=function(s){return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");};
 var fmtDate=function(s){if(!s)return "Not scheduled";var d=new Date(String(s).slice(0,10)+"T12:00:00");return isNaN(d.getTime())?"—":d.toLocaleDateString("en-CA",{month:"short",day:"numeric",year:"numeric"});};
@@ -59,6 +59,8 @@ function demo(){
  ];
  app.email_messages=[{id:"sample-mail-1",company_id:"demo-1",created_by:"marie",to_email:"example@example.invalid",subject:"Follow-up after your demonstration",body:"Hello,\n\nThank you for your interest in Home View Solutions.\n\nBest regards,\nHome View Solutions",legal_basis:"review_required",basis_note:"",status:"draft",created_at:"2026-11-23T08:00:00Z"}];
  app.emailFeatureError=null;
+ app.alerts=[{id:"sample-alert-1",title:"New customer activity",message:"Sample note added to Willowstone Homes.",company_id:"demo-1",event_kind:"activity_added",read_at:null,created_at:"2026-11-24T10:00:00Z"}];
+ app.alertSettings=null;app.alertError=null;app.settingsError=null;
  app.invites=[];app.user=null;app.workspace=null;app.role="demo";
  render();
 }
@@ -148,6 +150,7 @@ async function refresh(){
   }
  }
  render();
+ loadAlerts().catch(function(e){app.alertError=e.message;});
 }
 function attachRealtime(){
  if(app.channel){app.client.removeChannel(app.channel);app.channel=null;}
@@ -161,11 +164,25 @@ function attachRealtime(){
   });
  });
  app.channel=channel.subscribe();
+ if(app.alertChannel){app.client.removeChannel(app.alertChannel);app.alertChannel=null;}
+ if(app.user){
+  var personal=app.client.channel("crm-alerts-"+app.user.id);
+  personal.on("postgres_changes",{event:"*",schema:"public",table:"crm_notifications",filter:"recipient_id=eq."+app.user.id},function(payload){
+   loadAlerts().then(function(){if(payload.eventType==="INSERT"&&document.visibilityState==="visible"){notify("New CRM notification. Open Notifications to see details.");}}).catch(function(e){console.warn("CRM alert refresh:",e);});
+  });
+  app.alertChannel=personal.subscribe();
+ }
 }
-function go(view){app.view=view;app.selectedCompany=null;app.search="";app.filter="all";el("sidebar").classList.remove("open");render();window.scrollTo(0,0);if(view==="emails"&&!app.preview&&app.workspace){refresh().catch(function(e){notify(e.message,true);});}}
+function go(view){
+ app.view=view;app.selectedCompany=null;app.search="";app.filter="all";
+ el("sidebar").classList.remove("open");render();window.scrollTo(0,0);
+ if(view==="emails"&&!app.preview&&app.workspace)refresh().catch(function(e){notify(e.message,true);});
+ if(view==="alerts"&&!app.preview&&app.workspace)loadAlerts().catch(function(e){notify(e.message,true);});
+ if(view==="settings"&&!app.preview&&app.workspace)loadAlertSettings().catch(function(e){notify(e.message,true);});
+}
 function openCompany(id){if(!company(id))return;app.selectedCompany=id;app.view="detail";render();window.scrollTo(0,0);}
 function navTitle(){
- var titles={dashboard:["Dashboard","An overview of your builder relationships."],companies:["Companies","Every prospect, contact and conversation in one place."],pipeline:["Sales pipeline","Move relationships forward, one step at a time."],tasks:["Follow-ups & tasks","Know exactly who needs to do what next."],emails:["Email drafts","Prepare sales messages together. Sending is not connected yet."],settings:["Team & settings","Your shared CRM workspace."],detail:["Company details","Contacts, notes and follow-ups for this builder."]};
+ var titles={dashboard:["Dashboard","An overview of your builder relationships."],companies:["Companies","Every prospect, contact and conversation in one place."],pipeline:["Sales pipeline","Move relationships forward, one step at a time."],tasks:["Follow-ups & tasks","Know exactly who needs to do what next."],emails:["Email drafts","Prepare sales messages together. Sending is not connected yet."],alerts:["Notifications","Updates and sales activity for your account."],settings:["Team & settings","Your shared CRM workspace."],detail:["Company details","Contacts, notes and follow-ups for this builder."]};
  return titles[app.view]||titles.dashboard;
 }
 function notice(){
@@ -176,8 +193,8 @@ function render(){
  var label=navTitle();el("pageTitle").textContent=app.view==="detail"?(company(app.selectedCompany)||{}).name||"Company details":label[0];
  el("pageSubtitle").textContent=label[1];el("notice").innerHTML=notice();
  var primary=el("primaryAction");
- var act={dashboard:["+ Add company","company"],companies:["+ Add company","company"],pipeline:["+ Add company","company"],tasks:["+ Add task","task"],emails:["+ New email draft","email"],settings:["+ Invite teammate","invite"],detail:["+ Log activity","activity"]}[app.view]||["+ Add company","company"];
- primary.textContent=act[0];primary.dataset.modal=act[1];primary.style.display=app.view==="settings"&&app.role!=="admin"?"none":"";
+ var act={dashboard:["+ Add company","company"],companies:["+ Add company","company"],pipeline:["+ Add company","company"],tasks:["+ Add task","task"],emails:["+ New email draft","email"],alerts:["",""],settings:["+ Invite teammate","invite"],detail:["+ Log activity","activity"]}[app.view]||["+ Add company","company"];
+ primary.textContent=act[0];primary.dataset.modal=act[1];primary.style.display=(app.view==="settings"&&app.role!=="admin")||app.view==="alerts"?"none":"";
  Array.prototype.forEach.call(document.querySelectorAll("[data-nav]"),function(n){n.classList.toggle("active",n.dataset.nav===app.view||(app.view==="detail"&&n.dataset.nav==="companies"));});
  var who=app.member?(app.member.display_name||app.member.email):"Preview workspace";
  el("userName").textContent=who;el("userAvatar").textContent=app.preview?"HV":String(who).slice(0,2).toUpperCase();
@@ -187,9 +204,11 @@ function render(){
  else if(app.view==="pipeline")el("view").innerHTML=renderPipeline();
  else if(app.view==="tasks")el("view").innerHTML=renderTasks();
  else if(app.view==="emails")el("view").innerHTML=renderEmails();
+ else if(app.view==="alerts")el("view").innerHTML=renderAlerts();
  else if(app.view==="settings")el("view").innerHTML=renderSettings();
  else if(app.view==="detail")el("view").innerHTML=renderDetail();
  else el("view").innerHTML=renderDashboard();
+ updateAlertBadge();
 }
 function renderDashboard(){
  var count=app.companies.length,active=app.companies.filter(function(c){return c.status!=="won"&&c.status!=="lost";}).length,
