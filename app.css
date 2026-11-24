@@ -170,3 +170,45 @@ body{
   .topbar-actions{width:100%;justify-content:space-between}
   .field-list{grid-template-columns:minmax(0,1fr)}
 }
+
+/* Unified monochrome sidebar icons — matching the CRM notification bell.
+   All shapes are vector paths. No emoji, gradients or external icon assets. */
+.nav-btn .nav-icon-svg {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 25px;
+  width:25px;
+  height:25px;
+  color:#b9c5d6;
+}
+.nav-btn.active .nav-icon-svg,
+.nav-btn.active .alert-nav-icon { color:#fff; }
+.nav-btn .nav-icon-svg .sidebar-icon {
+  display:block;
+  width:23px;
+  height:23px;
+  color:inherit;
+  overflow:visible;
+}
+.nav-btn[data-nav="pipeline"] .sidebar-icon-funnel path {
+  fill:currentColor;
+  stroke:currentColor;
+  stroke-width:.35;
+  stroke-linejoin:round;
+}
+.nav-btn[data-nav="tasks"] .sidebar-icon-checklist path {
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2.05;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.nav-btn[data-nav="emails"] .sidebar-icon-envelope rect,
+.nav-btn[data-nav="emails"] .sidebar-icon-envelope path {
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
