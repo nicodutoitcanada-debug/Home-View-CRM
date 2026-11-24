@@ -55,3 +55,35 @@
 }
 
 .push-setup{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}.push-setup .secondary-btn{margin-top:8px}
+
+/* Solid, high-contrast notification bell and red unread bubble. Dynamic counts
+   are populated by the existing updateAlertBadge() logic; never fake alerts. */
+.alert-bell{
+  min-width:48px;height:48px;gap:0;
+  border:0;border-radius:12px;background:transparent;
+  color:#555;overflow:visible;flex-shrink:0;
+}
+.alert-bell:hover{background:#f5f6f8;border:0}
+.alert-bell:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.alert-bell-svg{display:block;width:36px;height:36px;fill:currentColor;flex:none}
+.alert-bell .alert-pill{
+  top:0;right:0;min-width:26px;height:26px;
+  padding:3px 5px;border:3px solid #fff;border-radius:999px;
+  background:#ee333b;color:#fff;font:800 13px/14px Inter,Arial,sans-serif;
+  margin:0;
+}
+.nav-btn .alert-nav-icon{
+  position:relative;display:inline-flex;justify-content:center;align-items:center;
+  flex:0 0 25px;width:25px;height:25px;color:#555;
+}
+.nav-btn .alert-nav-icon .alert-bell-svg{width:23px;height:23px}
+.nav-btn .alert-nav-icon .alert-pill{
+  position:absolute;right:-8px;top:-7px;min-width:19px;height:19px;
+  margin:0;padding:1px 3px;border:2px solid #fff;border-radius:999px;
+  background:#ee333b;color:white;font:800 10px/13px Inter,Arial,sans-serif;
+}
+@media(max-width:700px){
+  .alert-bell{min-width:42px;height:42px}
+  .alert-bell-svg{width:32px;height:32px}
+  .alert-bell .alert-pill{top:-1px;right:-2px}
+}
